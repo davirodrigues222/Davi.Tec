@@ -1,22 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { StatCard } from '../components/StarCard';
-import { StatusBadge } from '../components/StatusBadge';
-import { CertidaoGarantia } from '../components/CertidaoGarantia';
+import React, { useState, useEffect } from 'react';
 import { buscarOrdensServico, atualizarStatusOS } from '../services/api';
-import type { OrdemServico } from '../types';
+import type { OrdemServico, StatusOS } from '../types';
 
 export const Dashboard: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOS, setSelectedOS] = useState<OrdemServico | null>(null);
+  const [termoBusca, setTermoBusca] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
 
   const carregarOrdens = async () => {
     setLoading(true);
     try {
       const data = await buscarOrdensServico();
-      setOrdens(data);
-    } catch (error) {
-      console.error('Erro ao buscar OS:', error);
+      setOrdens(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Erro ao carregar Dashboard:', err);
       setOrdens([]);
     } finally {
       setLoading(false);
@@ -27,130 +25,173 @@ export const Dashboard: React.FC = () => {
     carregarOrdens();
   }, []);
 
-  const totalEmAberto = ordens.filter(
-    (os) => os.status_os !== 'ENTREGUE' && os.status_os !== 'CANCELADO'
+  const handleStatusChange = async (id_os: string, novoStatus: StatusOS) => {
+    try {
+      await atualizarStatusOS(id_os, novoStatus);
+      setOrdens((prev) =>
+        prev.map((os) => (os.id_os === id_os ? { ...os, status_os: novoStatus } : os))
+      );
+    } catch {
+      alert('Erro ao atualizar status da OS.');
+    }
+  };
+
+  const listaOrdens = Array.isArray(ordens) ? ordens : [];
+
+  const osNaBancada = listaOrdens.filter((os) =>
+    ['AGUARDANDO_AVALIACAO', 'EM_ANALISE', 'EM_MANUTENCAO'].includes(os?.status_os)
   ).length;
 
-  const faturamentoEstimado = ordens.reduce(
-    (acc, os) => acc + (os.orcamentoCalculado?.valorTotalOrcamento || 0),
+  // CÁLCULOS FINANCEIROS TRANSPARENTES
+  const faturamentoBruto = listaOrdens.reduce(
+    (acc, os) => acc + (os?.orcamentoCalculado?.valorTotalOrcamento || 0),
     0
   );
 
-  const aparelhosProntos = ordens.filter((os) => os.status_os === 'PRONTO').length;
+  const custosTotais = listaOrdens.reduce((acc, os) => {
+    const peca = os?.orcamentoCalculado?.custoPeca || 0;
+    const frete = os?.orcamentoCalculado?.freteReal || 0;
+    const custoGarantia = os?.garantia?.custoPecaGarantia || os?.garantia?.prejuizoTotalGarantia || 0;
+    return acc + peca + frete + custoGarantia;
+  }, 0);
+
+  const lucroLiquidoReal = faturamentoBruto - custosTotais;
+  const aparelhosProntos = listaOrdens.filter((os) => os?.status_os === 'PRONTO').length;
+
+  const ordensFiltradas = listaOrdens.filter((os) => {
+    if (!os) return false;
+    const termo = termoBusca.toLowerCase();
+    const numeroOs = os.numero_os ? os.numero_os.toLowerCase() : '';
+    const nomeCliente = os.cliente?.nome ? os.cliente.nome.toLowerCase() : '';
+    const modeloAparelho = os.aparelho?.modelo ? os.aparelho.modelo.toLowerCase() : '';
+
+    const bateBusca = numeroOs.includes(termo) || nomeCliente.includes(termo) || modeloAparelho.includes(termo);
+    const bateStatus = filtroStatus === 'TODOS' || os.status_os === filtroStatus;
+    return bateBusca && bateStatus;
+  });
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 space-y-4">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs text-zinc-400 font-medium">Carregando dados da bancada...</p>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div className="space-y-8 print:hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard
-            title="OS em Aberto"
-            value={totalEmAberto}
-            subtext="Em andamento ou análise"
-            accentColor="blue"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            }
-          />
-          <StatCard
-            title="Faturamento Estimado"
-            value={`R$ ${faturamentoEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            subtext="Soma das OS no banco MySQL"
-            accentColor="emerald"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-          <StatCard
-            title="Aparelhos Prontos"
-            value={aparelhosProntos}
-            subtext="Aguardando retirada"
-            accentColor="purple"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-              </svg>
-            }
-          />
+    <div className="space-y-8 max-w-[1600px] mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Na Bancada</span>
+          <h3 className="text-2xl font-black text-white mt-2">{osNaBancada}</h3>
+          <p className="text-[11px] text-zinc-500 mt-1">Serviços em andamento</p>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-            <div>
-              <h2 className="text-lg font-bold text-white">Ordens de Serviço Recentes</h2>
-              <p className="text-xs text-zinc-400">Dados síncronos com a base MySQL</p>
-            </div>
-            <button
-              onClick={carregarOrdens}
-              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium transition"
-            >
-              Atualizar Tabela
-            </button>
-          </div>
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Faturamento / Lucro Real</span>
+          <h3 className="text-2xl font-black text-white mt-2">R$ {faturamentoBruto.toFixed(2)}</h3>
+          <span className={`text-[11px] font-semibold block mt-1 ${lucroLiquidoReal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            Lucro Real: R$ {lucroLiquidoReal.toFixed(2)} (Custos: R$ {custosTotais.toFixed(2)})
+          </span>
+        </div>
 
-          <div className="overflow-x-auto">
-            {loading ? (
-              <div className="p-12 text-center text-zinc-500 text-sm">Carregando ordens de serviço...</div>
-            ) : ordens.length === 0 ? (
-              <div className="p-12 text-center text-zinc-500 text-sm">
-                <p className="text-base font-medium text-zinc-400">Nenhuma Ordem de Serviço cadastrada.</p>
-                <p className="text-xs mt-1">Abra uma nova OS para iniciar as atividades.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left text-sm text-zinc-300">
-                <thead className="bg-zinc-950/50 text-xs uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
-                  <tr>
-                    <th className="py-4 px-6">Nº OS</th>
-                    <th className="py-4 px-6">Cliente</th>
-                    <th className="py-4 px-6">Modelo</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6">Valor Total</th>
-                    <th className="py-4 px-6 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60">
-                  {ordens.map((os) => (
-                    <tr key={os.id_os} className="hover:bg-zinc-800/30 transition">
-                      <td className="py-4 px-6 font-mono font-medium text-blue-400">{os.numero_os}</td>
-                      <td className="py-4 px-6 font-medium text-white">{os.cliente?.nome}</td>
-                      <td className="py-4 px-6">{os.aparelho?.modelo}</td>
-                      <td className="py-4 px-6">
-                        <StatusBadge
-                          status={os.status_os}
-                          onChangeStatus={async (novoStatus) => {
-                            try {
-                              await atualizarStatusOS(os.id_os, novoStatus);
-                              carregarOrdens();
-                            } catch (err) {
-                              alert('Erro ao atualizar status');
-                            }
-                          }}
-                        />
-                      </td>
-                      <td className="py-4 px-6 font-semibold text-white">
-                        R$ {os.orcamentoCalculado?.valorTotalOrcamento ? os.orcamentoCalculado.valorTotalOrcamento.toFixed(2) : '0.00'}
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => setSelectedOS(os)}
-                          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium transition border border-zinc-700"
-                        >
-                          Certidão / Imprimir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aparelhos Prontos</span>
+          <h3 className="text-2xl font-black text-white mt-2">{aparelhosProntos}</h3>
+          <p className="text-[11px] text-zinc-500 mt-1">Aguardando retirada</p>
+        </div>
+
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Total de OS</span>
+            <h3 className="text-2xl font-black text-blue-400 mt-2">{listaOrdens.length}</h3>
           </div>
+          <button
+            onClick={carregarOrdens}
+            className="p-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+          >
+            🔄 Atualizar
+          </button>
         </div>
       </div>
 
-      {selectedOS && <CertidaoGarantia os={selectedOS} onClose={() => setSelectedOS(null)} />}
-    </>
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h3 className="text-sm font-bold text-white">Ordens de Serviço em Andamento</h3>
+          <div className="flex items-center space-x-3">
+            <input
+              type="text"
+              placeholder="Buscar cliente, modelo, OS..."
+              value={termoBusca}
+              onChange={(e) => setTermoBusca(e.target.value)}
+              className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-blue-500"
+            />
+            <select
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value)}
+              className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 outline-none"
+            >
+              <option value="TODOS">Todos os Status</option>
+              <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
+              <option value="EM_ANALISE">Em Análise</option>
+              <option value="AGUARDANDO_PECA">Aguardando Peça</option>
+              <option value="EM_MANUTENCAO">Em Manutenção</option>
+              <option value="PRONTO">Pronto</option>
+              <option value="ENTREGUE">Entregue</option>
+            </select>
+          </div>
+        </div>
+
+        {ordensFiltradas.length === 0 ? (
+          <div className="p-16 text-center space-y-2">
+            <h3 className="text-sm font-bold text-zinc-300">Nenhuma Ordem Encontrada</h3>
+            <p className="text-xs text-zinc-500">Cadastre uma nova OS para começar a monitorar a bancada.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-zinc-300">
+              <thead className="bg-zinc-950/80 text-zinc-400 uppercase border-b border-zinc-800 font-semibold">
+                <tr>
+                  <th className="p-4">Nº OS</th>
+                  <th className="p-4">Cliente / Contato</th>
+                  <th className="p-4">Aparelho / Modelo</th>
+                  <th className="p-4">Defeito Relatado</th>
+                  <th className="p-4">Status Bancada</th>
+                  <th className="p-4 text-right">Valor Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50">
+                {ordensFiltradas.map((os) => (
+                  <tr key={os.id_os} className="hover:bg-zinc-800/30 transition">
+                    <td className="p-4 font-mono font-bold text-blue-400">{os.numero_os}</td>
+                    <td className="p-4 font-bold text-white">{os.cliente?.nome}</td>
+                    <td className="p-4 font-medium text-zinc-200">{os.aparelho?.modelo}</td>
+                    <td className="p-4 max-w-xs truncate text-zinc-400">{os.defeitoRelatado}</td>
+                    <td className="p-4">
+                      <select
+                        value={os.status_os}
+                        onChange={(e) => handleStatusChange(os.id_os, e.target.value as StatusOS)}
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-[11px] text-zinc-200 outline-none"
+                      >
+                        <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
+                        <option value="EM_ANALISE">Em Análise</option>
+                        <option value="AGUARDANDO_PECA">Aguardando Peça</option>
+                        <option value="EM_MANUTENCAO">Em Manutenção</option>
+                        <option value="PRONTO">Pronto / Retirada</option>
+                        <option value="ENTREGUE">Entregue</option>
+                      </select>
+                    </td>
+                    <td className="p-4 text-right font-bold text-white">
+                      R$ {(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
