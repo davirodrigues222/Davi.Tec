@@ -20,6 +20,8 @@
     "escalade": "^3.2.0",
     "get-caller-file": "^2.0.5",
     "get-east-asian-width": "^1.6.0",
+    "lucide-react": "^1.45.0",
+    "recharts": "^3.10.1",
     "rxjs": "^7.8.2",
     "shell-quote": "^1.9.0",
     "string-width": "^7.2.0",
