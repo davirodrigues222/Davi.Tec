@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 interface Props {
   children: React.ReactNode;
-  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno';
-  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno') => void;
+  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros';
+  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
 }
 
 export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) => {
@@ -116,7 +116,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             <span>➕ Nova Ordem de Serviço</span>
           </button>
 
-          {/* BOTÃO ADICIONADO PARA GARANTIA / RETORNO */}
           <button
             onClick={() => setActiveTab('garantia-retorno')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
@@ -124,6 +123,16 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             }`}
           >
             <span>⚠️ Garantia / Retorno</span>
+          </button>
+
+          {/* 📁 ABA DE CADASTROS ADICIONADA AQUI */}
+          <button
+            onClick={() => setActiveTab('cadastros')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+              activeTab === 'cadastros' ? estiloAtual.activeTab : estiloAtual.navHover
+            }`}
+          >
+            <span>📁 Cadastros</span>
           </button>
 
           <button

@@ -1,16 +1,3 @@
-export type StatusChecklist = 'OK' | 'DEFEITO' | 'NAO_TESTADO';
-
-export interface ChecklistEntrada {
-  tela: StatusChecklist;
-  faceId: StatusChecklist;
-  bateria: StatusChecklist;
-  cameraTraseira: StatusChecklist;
-  cameraFrontal: StatusChecklist;
-  carga: StatusChecklist;
-  audio: StatusChecklist;
-  wifi: StatusChecklist;
-}
-
 export type StatusOS =
   | 'AGUARDANDO_AVALIACAO'
   | 'EM_ANALISE'
@@ -20,7 +7,19 @@ export type StatusOS =
   | 'ENTREGUE'
   | 'CANCELADO';
 
-export interface ClientePayload {
+export interface ServicoCadastrado {
+  id_servico: string;
+  nome: string;
+  preco_sugerido: number;
+}
+
+export interface FornecedorCadastrado {
+  id_fornecedor: string;
+  nome: string;
+  contato?: string;
+}
+
+export interface Cliente {
   idCliente?: string;
   nome: string;
   cpfCnpj?: string;
@@ -28,13 +27,13 @@ export interface ClientePayload {
   email?: string;
 }
 
-export interface AparelhoPayload {
+export interface Aparelho {
   modelo: string;
   imei1?: string;
   senhaDesbloqueio?: string;
 }
 
-export interface OrcamentoCalculadoResult {
+export interface OrcamentoCalculado {
   subtotalServicos: number;
   descontoGeralAplicado: number;
   valorTotalOrcamento: number;
@@ -44,50 +43,37 @@ export interface OrcamentoCalculadoResult {
   fornecedorPeca?: string;
 }
 
-export interface RegistroGarantia {
-  houveGarantia: boolean;
-  dataRetorno?: string;
-  defeitoConstatadoGarantia?: string;
-  pecaSubstituidaGarantia?: string;
-  custoPecaGarantia?: number;
-  cobertoPelaAssistência?: boolean;
-  prejuizoTotalGarantia?: number;
+export interface HistoricoItem {
+  id: string;
+  data: string;
+  descricao: string;
+  autor?: string;
 }
 
-// Interface completa da Ordem de Serviço
+export interface RegistroGarantia {
+  houveGarantia?: boolean;
+  custoPecaGarantia?: number;
+  prejuizoTotalGarantia?: number;
+  [key: string]: any;
+}
+
 export interface OrdemServico {
   id_os: string;
   numero_os: string;
   status_os: StatusOS;
-  possuiGarantia?: boolean; // <-- Flag de controle de garantia
   defeitoRelatado: string;
   diagnostico?: string;
   servicoRealizado?: string;
   pecasUtilizadas?: string;
   observacoes?: string;
-  checklistEntrada?: ChecklistEntrada;
+  possuiGarantia: boolean; // Flag estrita para controlar elegibilidade de garantia
+  checklistEntrada?: Record<string, string>;
   data_abertura?: string;
   data_prevista_entrega?: string;
   data_conclusao?: string;
+  cliente: Cliente;
+  aparelho: Aparelho;
+  orcamentoCalculado: OrcamentoCalculado;
   garantia?: RegistroGarantia;
-  historico?: Array<{ id: string; data: string; descricao: string; autor?: string }>;
-  cliente: ClientePayload;
-  aparelho: AparelhoPayload;
-  orcamentoCalculado: OrcamentoCalculadoResult;
-}
-
-// Interface para a criação de OS (Payload enviado ao backend)
-export interface CriarOrdemServicoPayload {
-  cliente: ClientePayload;
-  aparelho: AparelhoPayload;
-  possuiGarantia?: boolean; // <-- Permite enviar a escolha ao backend
-  defeitoRelatado: string;
-  diagnostico?: string;
-  servicoRealizado?: string;
-  pecasUtilizadas?: string;
-  observacoes?: string;
-  dataAbertura?: string;
-  dataPrevistaEntrega?: string;
-  checklistEntrada?: ChecklistEntrada;
-  orcamentoCalculado: OrcamentoCalculadoResult;
+  historico?: HistoricoItem[];
 }
