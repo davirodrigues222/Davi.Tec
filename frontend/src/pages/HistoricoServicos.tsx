@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { buscarOrdensServico, excluirOrdemServico, editarOrdemServico } from '../services/api';
+import { StatusBadge } from '../components/StatusBadge';
 import type { OrdemServico, StatusOS } from '../types';
 
 interface DadosLojaConfig {
@@ -15,7 +16,6 @@ export const HistoricoServicos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [termoBusca, setTermoBusca] = useState('');
   
-  // Dados da loja carregados das configurações
   const [dadosLoja, setDadosLoja] = useState<DadosLojaConfig>({
     nomeLoja: "Sampaio Cell",
     subtitulo: "Assistência Técnica & Microeletrônica Especializada",
@@ -49,7 +49,6 @@ export const HistoricoServicos: React.FC = () => {
     }
   }, []);
 
-  // Modais de Controle
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
@@ -59,7 +58,6 @@ export const HistoricoServicos: React.FC = () => {
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [abaModal, setAbaModal] = useState<'detalhes' | 'checklist' | 'historico'>('detalhes');
 
-  // Estados dos campos de edição
   const [editNome, setEditNome] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
   const [editModelo, setEditModelo] = useState('');
@@ -97,6 +95,10 @@ export const HistoricoServicos: React.FC = () => {
   }, []);
 
   const handleImprimir = (os: OrdemServico) => {
+    if (os.possuiGarantia === false || Number(os.possuiGarantia) === 0) {
+      alert("Este serviço foi cadastrado sem cobertura de garantia.");
+      return;
+    }
     setOsParaImprimir(os);
     setTimeout(() => {
       window.print();
@@ -150,6 +152,9 @@ export const HistoricoServicos: React.FC = () => {
       const numFrete = editFrete === '' ? 0 : Number(editFrete);
       const numDesconto = editDesconto === '' ? 0 : Number(editDesconto);
 
+      if (editStatus !== osParaEditar.status_os) {
+        logs.push(`Status alterado para ${editStatus.replace('_', ' ')}`);
+      }
       if (numValorTotal !== osParaEditar.orcamentoCalculado?.valorTotalOrcamento) {
         logs.push(`Valor alterado de R$ ${osParaEditar.orcamentoCalculado?.valorTotalOrcamento} para R$ ${numValorTotal}`);
       }
@@ -187,7 +192,6 @@ export const HistoricoServicos: React.FC = () => {
       });
 
       setOsParaEditar(null);
-      // Se estivesse visualizando os detalhes da OS editada, fecha o modal para atualizar a tela
       if (osSelecionada?.id_os === osParaEditar.id_os) {
         setOsSelecionada(null);
       }
@@ -291,7 +295,6 @@ export const HistoricoServicos: React.FC = () => {
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center space-x-2">
-                        {/* Apenas Detalhes e Excluir visíveis na coluna de ações */}
                         <button
                           onClick={() => {
                             setOsSelecionada(os);
@@ -324,15 +327,13 @@ export const HistoricoServicos: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
             
-            {/* CABEÇALHO DO MODAL DETALHES COM BOTÕES DE AÇÃO (EDITAR E IMPRIMIR) */}
+            {/* CABEÇALHO DO MODAL DETALHES */}
             <div className="p-4 bg-zinc-950 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center space-x-2">
                   <span>Ordem de Serviço</span>
                   <span className="font-mono text-blue-400">#{osSelecionada.numero_os}</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-300 font-normal">
-                    {osSelecionada.status_os?.replace('_', ' ')}
-                  </span>
+                  <StatusBadge status={osSelecionada.status_os} />
                 </h3>
                 <p className="text-[11px] text-zinc-500 mt-0.5">
                   {osSelecionada.cliente?.nome} — {osSelecionada.aparelho?.modelo}
@@ -349,13 +350,16 @@ export const HistoricoServicos: React.FC = () => {
                   <span>Editar OS</span>
                 </button>
 
-                <button
-                  onClick={() => handleImprimir(osSelecionada)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1 shadow-md"
-                >
-                  <span>🖨️</span>
-                  <span>Imprimir / Salvar PDF</span>
-                </button>
+                {/* O BOTÃO DE IMPRESSÃO SÓ APARECE SE O SERVIÇO TIVER GARANTIA (NÃO FOR FALSE E NEM 0) */}
+                {osSelecionada.possuiGarantia !== false && Number(osSelecionada.possuiGarantia) !== 0 && (
+                  <button
+                    onClick={() => handleImprimir(osSelecionada)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1 shadow-md"
+                  >
+                    <span>🖨️</span>
+                    <span>Imprimir / Salvar PDF</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setOsSelecionada(null)}
@@ -399,8 +403,13 @@ export const HistoricoServicos: React.FC = () => {
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {abaModal === 'detalhes' && (
                 <div className="space-y-4 text-xs">
-                  
-                  {/* Datas e Status */}
+                  {(osSelecionada.possuiGarantia === false || Number(osSelecionada.possuiGarantia) === 0) && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 flex items-center space-x-2">
+                      <span>⚠️</span>
+                      <span><strong>Atenção:</strong> Este atendimento foi cadastrado <strong>sem cobertura de garantia</strong>. A emissão de termos e comprovantes de garantia está desativada.</span>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
                     <div>
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">Data de Abertura</span>
@@ -422,7 +431,6 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Dados do Cliente e Aparelho */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
                     <div className="space-y-1">
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">👤 Informações do Cliente</span>
@@ -440,7 +448,6 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Problema, Diagnóstico e Serviço Realizado */}
                   <div className="space-y-3 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
                     <div>
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">Defeito Relatado pelo Cliente</span>
@@ -466,7 +473,6 @@ export const HistoricoServicos: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Detalhamento Peças e Custos */}
                   <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
                     <span className="text-zinc-400 font-bold uppercase text-[10px] block border-b border-zinc-800/80 pb-2">
                       📦 Custos de Entrada, Peças & Fornecedor (Uso Interno)
@@ -499,7 +505,6 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Lucro e Valor Cobrado Final */}
                   <div className="p-4 bg-zinc-950 border border-emerald-500/30 rounded-xl flex justify-between items-center">
                     <div>
                       <span className="text-emerald-400 font-bold uppercase text-[10px] block">Lucro Líquido Real</span>
@@ -619,14 +624,15 @@ export const HistoricoServicos: React.FC = () => {
                   <select
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as StatusOS)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500 font-bold"
                   >
                     <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
                     <option value="EM_ANALISE">Em Análise</option>
                     <option value="AGUARDANDO_PECA">Aguardando Peça</option>
                     <option value="EM_MANUTENCAO">Em Manutenção</option>
-                    <option value="PRONTO">Pronto</option>
-                    <option value="ENTREGUE">Entregue</option>
+                    <option value="PRONTO">Pronto / Retirada</option>
+                    <option value="ENTREGUE">Entregue / Concluído</option>
+                    <option value="CANCELADO">Cancelado</option>
                   </select>
                 </div>
               </div>
@@ -724,7 +730,7 @@ export const HistoricoServicos: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL EXCLUSÃO COM CONFIRMAÇÃO */}
+      {/* MODAL EXCLUSÃO */}
       {osParaExcluir && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl">
@@ -757,7 +763,7 @@ export const HistoricoServicos: React.FC = () => {
         </div>
       )}
 
-      {/* TEMPLATE DE IMPRESSÃO HISTÓRICO - DINÂMICO COM CENTRAL DE CONFIGURAÇÕES */}
+      {/* TEMPLATE DE IMPRESSÃO */}
       {osParaImprimir && (
         <div className="hidden print:block text-slate-900 font-sans p-2 bg-white leading-tight">
           <div className="border-b-2 border-slate-900 pb-3 mb-3 flex justify-between items-start">
@@ -895,7 +901,7 @@ export const HistoricoServicos: React.FC = () => {
               <li><strong>Prazo de Garantia:</strong> A garantia cobre o período legal de 90 (noventa) dias a contar da data de entrega do aparelho, restrita exclusivamente às peças substituídas ou aos serviços efetuados especificados nesta Ordem de Serviço.</li>
               <li><strong>Perda de Garantia:</strong> A garantia será sumariamente cancelada em caso de selo de garantia violado, danos físicos (telas trincadas ou quebradas), oxidação/contato com líquidos, intervenção por terceiros não autorizados ou uso inadequado do equipamento.</li>
               <li><strong>Aparelhos Molhados ou Oxidados:</strong> Equipamentos que deram entrada com histórico de contato com líquidos podem apresentar falhas posteriores imprevisíveis durante ou após a manutenção. A assistência não se responsabiliza por vícios ocultos decorrentes de oxidação prévia.</li>
-              <li><strong>Retirada do Equipamento:</strong> Equipamentos não retirados em até 90 (noventa) dias após a notificação de conclusão estarão sujeitos a cobrança de taxa de permanência ou descarte conforme o Artigo 1.275 do Código Civil Brasileiro.</li>
+              <li><strong>Retirada do Equipamento:</strong> Equipamentos não retirados em até 90 (noventa) dias após a notification de conclusão estarão sujeitos a cobrança de taxa de permanência ou descarte conforme o Artigo 1.275 do Código Civil Brasileiro.</li>
               <li><strong>Backup de Dados:</strong> A assistência técnica NÃO se responsabiliza por perdas de dados, fotos ou arquivos gravados no aparelho. É de responsabilidade do cliente a realização de backup prévio antes do envio à manutenção.</li>
             </ol>
           </div>

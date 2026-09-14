@@ -97,7 +97,7 @@ app.post("/v1/orcamentos/calcular", async (req: Request, res: Response) => {
   }
 });
 
-// 2. ABERTURA DE ORDEM DE SERVIÇO (PERSISTÊNCIA DINÂMICA DE CUSTOS)
+// 2. ABERTURA DE ORDEM DE SERVIÇO (PERSISTÊNCIA DINÂMICA DE CUSTOS + GARANTIA)
 app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
@@ -114,6 +114,7 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
       dataPrevistaEntrega,
       checklistEntrada,
       orcamentoCalculado,
+      possuiGarantia, // 👈 Captura do campo enviado pelo frontend
     } = req.body;
 
     let clienteId = cliente?.idCliente;
@@ -149,18 +150,19 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
     const osId = uuidv4();
     const numeroOsGerado = `OS-${Date.now().toString().slice(-6)}`;
     
-    // Captura dos custos reais preenchidos
     const numPeca = Number(orcamentoCalculado?.custoPeca) || 0;
     const numFrete = Number(orcamentoCalculado?.freteReal) || 0;
     const desconto = Number(orcamentoCalculado?.descontoGeralAplicado) || 0;
     const valorTotal = Number(orcamentoCalculado?.valorTotalOrcamento) || 0;
     const subtotal = Number(orcamentoCalculado?.subtotalServicos) || (valorTotal + desconto);
     
-    // Lucro Real = Valor Cobrado - (Custo Peça + Frete)
     const lucroReal = valorTotal - (numPeca + numFrete);
     const fornecedorPeca = orcamentoCalculado?.fornecedorPeca || null;
 
     const dataFinalAbertura = formatarDataLocal(dataAbertura) || new Date();
+
+    // 👈 Tratamento booleano seguro para o MySQL (1 para com garantia, 0 para sem garantia)
+    const statusGarantiaDb = possuiGarantia === false ? 0 : 1;
 
     const historicoInicial = [
       {
@@ -173,8 +175,8 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
 
     await connection.query(
       `INSERT INTO ordens_servico 
-       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, historico_json) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, possui_garantia, historico_json) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         osId,
         numeroOsGerado,
@@ -191,12 +193,13 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
         numFrete,
         fornecedorPeca,
         dataFinalAbertura,
+        statusGarantiaDb, // 👈 Inserção do campo no banco
         JSON.stringify(historicoInicial),
       ]
     );
 
     await connection.commit();
-    console.log(`✅ OS Criada: ${numeroOsGerado} | Cobrado: R$ ${valorTotal} | Peça: R$ ${numPeca} | Frete: R$ ${numFrete} | Lucro: R$ ${lucroReal}`);
+    console.log(`✅ OS Criada: ${numeroOsGerado} | Cobrado: R$ ${valorTotal} | Peça: R$ ${numPeca} | Frete: R$ ${numFrete} | Lucro: R$ ${lucroReal} | Garantia: ${statusGarantiaDb}`);
     return res.status(201).json({
       sucesso: true,
       data: { idOs: osId, numeroOs: numeroOsGerado },
@@ -234,6 +237,11 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
     const selectObs = colunasExistentes.has('observacoes_internas') ? 'os.observacoes_internas AS observacoes' : 'NULL AS observacoes';
     const selectPrevista = colunasExistentes.has('data_prevista_entrega') ? 'os.data_prevista_entrega AS dataPrevistaEntrega' : 'NULL AS dataPrevistaEntrega';
     const selectConclusao = colunasExistentes.has('data_conclusao') ? 'os.data_conclusao AS dataConclusao' : 'NULL AS dataConclusao';
+    
+    // 👈 Verificação dinâmica segura para o campo de controle de garantia na listagem
+    const selectPossuiGarantia = colunasExistentes.has('possui_garantia') 
+      ? 'os.possui_garantia AS possuiGarantiaDb' 
+      : (colunasExistentes.has('possuigarantia') ? 'os.possuiGarantia AS possuiGarantiaDb' : '1 AS possuiGarantiaDb');
 
     const [rows]: any = await pool.query(`
       SELECT 
@@ -241,6 +249,7 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
         os.subtotal_servicos AS subtotalServicos, os.desconto_valor AS descontoValor,
         os.valor_total AS valorTotal, os.lucro_estimado_total AS lucroEstimadoTotal,
         os.data_abertura,
+        ${selectPossuiGarantia},
         ${selectGarantia}, ${selectHistorico}, ${selectChecklist},
         ${selectCusto}, ${selectFrete}, ${selectFornecedor},
         ${selectDiag}, ${selectServico}, ${selectPecas}, ${selectObs},
@@ -292,8 +301,10 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
       const valorTotalCobrado = Number(row.valorTotal || 0);
       const custoGarantia = Number(garantia?.custoPecaGarantia || garantia?.prejuizoTotalGarantia || 0);
       
-      // Recálculo garantido do Lucro Real
       const lucroRealRecalculado = valorTotalCobrado - (numPeca + numFrete + custoGarantia);
+
+      // Conversão limpa para o front-end booleano (0 vira false, 1 ou null/outros vira true)
+      const possuiGarantiaFlag = row.possuiGarantiaDb !== 0 && row.possuiGarantiaDb !== false;
 
       return {
         id_os: row.id_os,
@@ -309,6 +320,7 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
         data_prevista_entrega: row.dataPrevistaEntrega || null,
         data_conclusao: row.dataConclusao || null,
         garantia: garantia,
+        possuiGarantia: possuiGarantiaFlag, // 👈 Enviado mapeado para o front-end esconder/mostrar o botão
         historico: historico,
         cliente: {
           nome: row.clienteNome || "Cliente sem nome",
@@ -444,6 +456,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       orcamentoCalculado,
       garantia,
       modificacoesLog,
+      possuiGarantia, // 👈 Captura opcional na edição caso alterem
     } = req.body;
 
     const [rows]: any = await connection.query(
@@ -515,9 +528,13 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       custoGarantia = Number(garantiaTyped.custoPecaGarantia || garantiaTyped.prejuizoTotalGarantia || 0);
     }
 
-    // Recálculo dinâmico transparente na edição
     const lucroRealAjustado = valorTotal - (numPeca + numFrete + custoGarantia);
     const dataAberturaAjustada = formatarDataLocal(data_abertura) || osAntiga.data_abertura;
+
+    // Condicional para atualizar a garantia caso venha informada na edição
+    const statusGarantiaUpdate = possuiGarantia !== undefined 
+      ? (possuiGarantia === false ? 0 : 1) 
+      : (osAntiga.possui_garantia ?? 1);
 
     await connection.query(
       `UPDATE ordens_servico SET 
@@ -531,6 +548,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
         frete_real = ?,
         fornecedor_peca = ?,
         data_abertura = ?,
+        possui_garantia = ?,
         garantia_json = ?,
         historico_json = ?
        WHERE id_os = ?`,
@@ -545,6 +563,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
         numFrete,
         orcamentoCalculado?.fornecedorPeca || osAntiga.fornecedor_peca,
         dataAberturaAjustada,
+        statusGarantiaUpdate,
         garantia ? JSON.stringify(garantia) : osAntiga.garantia_json,
         JSON.stringify(historico),
         id,

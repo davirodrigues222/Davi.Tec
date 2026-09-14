@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 interface Props {
   children: React.ReactNode;
-  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os';
-  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os') => void;
+  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno';
+  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno') => void;
 }
 
 export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) => {
@@ -33,7 +33,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
   }, []);
 
-  // Mapeamento de Cores Totais por Tema
   const temasEstilos = {
     dark: {
       appBg: 'bg-zinc-950 text-zinc-100',
@@ -70,7 +69,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
               <img src={logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800" />
             ) : (
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30">
-                
+                SC
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -81,7 +80,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
-          {/* Dashboard */}
           <button
             onClick={() => setActiveTab('dashboard')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
@@ -91,7 +89,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             <span>📊 Dashboard</span>
           </button>
 
-          {/* Análises & Relatórios */}
           <button
             onClick={() => setActiveTab('relatorios')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
@@ -101,7 +98,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             <span>📈 Análises & Relatórios</span>
           </button>
 
-          {/* Histórico de Serviços */}
           <button
             onClick={() => setActiveTab('historico')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
@@ -111,17 +107,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             <span>📋 Histórico de Serviços</span>
           </button>
 
-          {/* Configurações */}
-          <button
-            onClick={() => setActiveTab('configuracoes')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
-              activeTab === 'configuracoes' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span>⚙️ Configurações</span>
-          </button>
-
-          {/* Nova OS */}
           <button
             onClick={() => setActiveTab('nova-os')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
@@ -129,6 +114,25 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
             }`}
           >
             <span>➕ Nova Ordem de Serviço</span>
+          </button>
+
+          {/* BOTÃO ADICIONADO PARA GARANTIA / RETORNO */}
+          <button
+            onClick={() => setActiveTab('garantia-retorno')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+              activeTab === 'garantia-retorno' ? estiloAtual.activeTab : estiloAtual.navHover
+            }`}
+          >
+            <span>⚠️ Garantia / Retorno</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('configuracoes')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+              activeTab === 'configuracoes' ? estiloAtual.activeTab : estiloAtual.navHover
+            }`}
+          >
+            <span>⚙️ Configurações</span>
           </button>
         </nav>
 

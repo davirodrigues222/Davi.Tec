@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { buscarOrdensServico, atualizarStatusOS } from '../services/api';
-import type { OrdemServico, StatusOS } from '../types';
+import { buscarOrdensServico } from '../services/api';
+import { StatusBadge } from '../components/StatusBadge';
+import type { OrdemServico } from '../types';
 
 export const Dashboard: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -24,17 +25,6 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     carregarOrdens();
   }, []);
-
-  const handleStatusChange = async (id_os: string, novoStatus: StatusOS) => {
-    try {
-      await atualizarStatusOS(id_os, novoStatus);
-      setOrdens((prev) =>
-        prev.map((os) => (os.id_os === id_os ? { ...os, status_os: novoStatus } : os))
-      );
-    } catch {
-      alert('Erro ao atualizar status da OS.');
-    }
-  };
 
   const listaOrdens = Array.isArray(ordens) ? ordens : [];
 
@@ -168,19 +158,9 @@ export const Dashboard: React.FC = () => {
                     <td className="p-4 font-bold text-white">{os.cliente?.nome}</td>
                     <td className="p-4 font-medium text-zinc-200">{os.aparelho?.modelo}</td>
                     <td className="p-4 max-w-xs truncate text-zinc-400">{os.defeitoRelatado}</td>
+                    {/* STATUS SOMENTE LEITURA */}
                     <td className="p-4">
-                      <select
-                        value={os.status_os}
-                        onChange={(e) => handleStatusChange(os.id_os, e.target.value as StatusOS)}
-                        className="bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-[11px] text-zinc-200 outline-none"
-                      >
-                        <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
-                        <option value="EM_ANALISE">Em Análise</option>
-                        <option value="AGUARDANDO_PECA">Aguardando Peça</option>
-                        <option value="EM_MANUTENCAO">Em Manutenção</option>
-                        <option value="PRONTO">Pronto / Retirada</option>
-                        <option value="ENTREGUE">Entregue</option>
-                      </select>
+                      <StatusBadge status={os.status_os} />
                     </td>
                     <td className="p-4 text-right font-bold text-white">
                       R$ {(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}

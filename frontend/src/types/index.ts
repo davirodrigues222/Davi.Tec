@@ -17,7 +17,8 @@ export type StatusOS =
   | 'AGUARDANDO_PECA'
   | 'EM_MANUTENCAO'
   | 'PRONTO'
-  | 'ENTREGUE';
+  | 'ENTREGUE'
+  | 'CANCELADO';
 
 export interface ClientePayload {
   idCliente?: string;
@@ -31,12 +32,6 @@ export interface AparelhoPayload {
   modelo: string;
   imei1?: string;
   senhaDesbloqueio?: string;
-}
-
-export interface ItemOrcamentoInput {
-  idRegra?: string;
-  custoPeca?: number;
-  freteReal?: number;
 }
 
 export interface OrcamentoCalculadoResult {
@@ -59,10 +54,12 @@ export interface RegistroGarantia {
   prejuizoTotalGarantia?: number;
 }
 
+// Interface completa da Ordem de Serviço
 export interface OrdemServico {
   id_os: string;
   numero_os: string;
   status_os: StatusOS;
+  possuiGarantia?: boolean; // <-- Flag de controle de garantia
   defeitoRelatado: string;
   diagnostico?: string;
   servicoRealizado?: string;
@@ -76,5 +73,21 @@ export interface OrdemServico {
   historico?: Array<{ id: string; data: string; descricao: string; autor?: string }>;
   cliente: ClientePayload;
   aparelho: AparelhoPayload;
+  orcamentoCalculado: OrcamentoCalculadoResult;
+}
+
+// Interface para a criação de OS (Payload enviado ao backend)
+export interface CriarOrdemServicoPayload {
+  cliente: ClientePayload;
+  aparelho: AparelhoPayload;
+  possuiGarantia?: boolean; // <-- Permite enviar a escolha ao backend
+  defeitoRelatado: string;
+  diagnostico?: string;
+  servicoRealizado?: string;
+  pecasUtilizadas?: string;
+  observacoes?: string;
+  dataAbertura?: string;
+  dataPrevistaEntrega?: string;
+  checklistEntrada?: ChecklistEntrada;
   orcamentoCalculado: OrcamentoCalculadoResult;
 }
