@@ -6,6 +6,26 @@ export const NovaOS: React.FC = () => {
   const [listaFornecedores, setListaFornecedores] = useState<any[]>([]);
   const [listaServicos, setListaServicos] = useState<any[]>([]);
 
+  // Lista padrão de aparelhos populares em assistências
+  const modelosPopulares = [
+    // iPhones
+    "iPhone 7", "iPhone 8", "iPhone 8 Plus", "iPhone X", "iPhone XR", "iPhone XS", "iPhone XS Max",
+    "iPhone 11", "iPhone 11 Pro", "iPhone 11 Pro Max", "iPhone 12", "iPhone 12 Pro", "iPhone 12 Pro Max", "iPhone 12 Mini",
+    "iPhone 13", "iPhone 13 Pro", "iPhone 13 Pro Max", "iPhone 13 Mini", "iPhone 14", "iPhone 14 Plus", "iPhone 14 Pro", "iPhone 14 Pro Max",
+    "iPhone 15", "iPhone 15 Plus", "iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone 16", "iPhone 16 Pro",
+    // Samsung
+    "Samsung Galaxy A03", "Samsung Galaxy A04", "Samsung Galaxy A05", "Samsung Galaxy A13", "Samsung Galaxy A14", "Samsung Galaxy A15",
+    "Samsung Galaxy A32", "Samsung Galaxy A33", "Samsung Galaxy A34", "Samsung Galaxy A53", "Samsung Galaxy A54", "Samsung Galaxy A55",
+    "Samsung Galaxy S20", "Samsung Galaxy S21", "Samsung Galaxy S22", "Samsung Galaxy S23", "Samsung Galaxy S24", "Samsung Galaxy S24 Ultra",
+    // Xiaomi / Redmi
+    "Redmi 9C", "Redmi 10", "Redmi 12", "Redmi 13C", "Redmi Note 10", "Redmi Note 11", "Redmi Note 12", "Redmi Note 13", "POCO X5", "POCO X6",
+    // Motorola
+    "Moto G13", "Moto G14", "Moto G23", "Moto G24", "Moto G32", "Moto G52", "Moto G53", "Moto G54", "Moto Edge 30", "Moto Edge 40"
+  ];
+
+  // Estado para controlar as sugestões do autocomplete
+  const [sugestoesAparelho, setSugestoesAparelho] = useState<string[]>([]);
+
   const [idClienteSelecionado, setIdClienteSelecionado] = useState("");
   const [nomeCliente, setNomeCliente] = useState("");
   const [whatsappCliente, setWhatsappCliente] = useState("");
@@ -24,9 +44,7 @@ export const NovaOS: React.FC = () => {
   const [freteReal, setFreteReal] = useState<number | "">("");
   const [fornecedorPeca, setFornecedorPeca] = useState("");
   const [descontoGeral, setDescontoGeral] = useState<number | "">("");
-  const [valorTotalOrcamento, setValorTotalOrcamento] = useState<number | "">(
-    "",
-  );
+  const [valorTotalOrcamento, setValorTotalOrcamento] = useState<number | "">("");
   const [servicoSelecionadoId, setServicoSelecionadoId] = useState("");
 
   const [possuiGarantia, setPossuiGarantia] = useState<boolean>(true);
@@ -54,15 +72,11 @@ export const NovaOS: React.FC = () => {
         const dataCli = await resCli.json();
         if (dataCli.sucesso) setListaClientes(dataCli.data);
 
-        const resForn = await fetch(
-          "http://localhost:3000/v1/cadastros/fornecedores",
-        );
+        const resForn = await fetch("http://localhost:3000/v1/cadastros/fornecedores");
         const dataForn = await resForn.json();
         if (dataForn.sucesso) setListaFornecedores(dataForn.data);
 
-        const resServ = await fetch(
-          "http://localhost:3000/v1/cadastros/servicos",
-        );
+        const resServ = await fetch("http://localhost:3000/v1/cadastros/servicos");
         const dataServ = await resServ.json();
         if (dataServ.sucesso) setListaServicos(dataServ.data);
       } catch (err) {
@@ -101,6 +115,21 @@ export const NovaOS: React.FC = () => {
     }
   };
 
+  const handleDigitarModelo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const texto = e.target.value;
+    setModeloAparelho(texto);
+
+    if (texto.trim().length === 0) {
+      setSugestoesAparelho([]);
+      return;
+    }
+
+    const filtrados = modelosPopulares.filter((m) =>
+      m.toLowerCase().includes(texto.toLowerCase())
+    );
+    setSugestoesAparelho(filtrados);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeCliente.trim() || !modeloAparelho.trim()) {
@@ -137,10 +166,8 @@ export const NovaOS: React.FC = () => {
           custoPeca: custoPeca === "" ? 0 : Number(custoPeca),
           freteReal: freteReal === "" ? 0 : Number(freteReal),
           fornecedorPeca,
-          descontoGeralAplicado:
-            descontoGeral === "" ? 0 : Number(descontoGeral),
-          valorTotalOrcamento:
-            valorTotalOrcamento === "" ? 0 : Number(valorTotalOrcamento),
+          descontoGeralAplicado: descontoGeral === "" ? 0 : Number(descontoGeral),
+          valorTotalOrcamento: valorTotalOrcamento === "" ? 0 : Number(valorTotalOrcamento),
           subtotalServicos:
             (valorTotalOrcamento === "" ? 0 : Number(valorTotalOrcamento)) +
             (descontoGeral === "" ? 0 : Number(descontoGeral)),
@@ -150,9 +177,7 @@ export const NovaOS: React.FC = () => {
       const resposta: any = await criarOrdemServico(payload as any);
 
       if (resposta && resposta.numeroOs) {
-        setSucessoMsg(
-          `Ordem de Serviço ${resposta.numeroOs} criada com sucesso!`,
-        );
+        setSucessoMsg(`Ordem de Serviço ${resposta.numeroOs} criada com sucesso!`);
         setNomeCliente("");
         setWhatsappCliente("");
         setCpfCnpjCliente("");
@@ -183,9 +208,7 @@ export const NovaOS: React.FC = () => {
     <div className="max-w-[1400px] mx-auto space-y-6 text-xs text-zinc-300">
       <div className="border-b border-zinc-800 pb-4 flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-bold text-white">
-            Nova Ordem de Serviço
-          </h2>
+          <h2 className="text-xl font-bold text-white">Nova Ordem de Serviço</h2>
           <p className="text-zinc-400 mt-0.5">
             Cadastre um novo atendimento integrando clientes e serviços salvos.
           </p>
@@ -205,8 +228,7 @@ export const NovaOS: React.FC = () => {
               Cobertura de Garantia para este Atendimento
             </h3>
             <p className="text-zinc-400">
-              Serviços sem garantia ocultam botões de impressão e bloqueiam
-              emissão de termos.
+              Serviços sem garantia ocultam botões de impressão e bloqueiam emissão de termos.
             </p>
           </div>
           <div className="flex items-center space-x-2 bg-zinc-950 p-1.5 border border-zinc-800 rounded-xl">
@@ -239,9 +261,7 @@ export const NovaOS: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Dados do Cliente */}
           <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-blue-400">
-              1. Dados do Cliente
-            </h3>
+            <h3 className="text-sm font-bold text-blue-400">1. Dados do Cliente</h3>
 
             <div>
               <label className="text-zinc-400 block mb-1">
@@ -252,7 +272,7 @@ export const NovaOS: React.FC = () => {
                 onChange={handleSelecionarCliente}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
               >
-                <option value="">Ou selecione da base de cadastros...</option>
+                <option value="">Clientes Cadastrados</option>
                 {listaClientes.map((c) => (
                   <option key={c.id_cliente} value={c.id_cliente}>
                     {c.nome} — {c.whatsapp || "Sem WhatsApp"}
@@ -262,9 +282,7 @@ export const NovaOS: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Nome Completo *
-              </label>
+              <label className="text-zinc-400 block mb-1">Nome Completo *</label>
               <input
                 type="text"
                 required
@@ -301,29 +319,43 @@ export const NovaOS: React.FC = () => {
 
           {/* Dados do Aparelho */}
           <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-amber-400">
-              2. Aparelho & Datas
-            </h3>
+            <h3 className="text-sm font-bold text-amber-400">2. Aparelho & Datas</h3>
 
-            <div>
-              <label className="text-zinc-400 block mb-1">
-                Modelo do Aparelho *
-              </label>
+            {/* AUTOCOMPLETE DO APARELHO */}
+            <div className="relative">
+              <label className="text-zinc-400 block mb-1">Modelo do Aparelho *</label>
               <input
                 type="text"
                 required
                 placeholder="Ex: iPhone 13, Samsung S22..."
                 value={modeloAparelho}
-                onChange={(e) => setModeloAparelho(e.target.value)}
+                onChange={handleDigitarModelo}
+                onBlur={() => setTimeout(() => setSugestoesAparelho([]), 200)}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
               />
+
+              {sugestoesAparelho.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-zinc-800">
+                  {sugestoesAparelho.map((modelo, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        setModeloAparelho(modelo);
+                        setSugestoesAparelho([]);
+                      }}
+                      className="w-full text-left px-3 py-2 text-zinc-200 hover:bg-blue-600/30 hover:text-white transition text-xs"
+                    >
+                      {modelo}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-zinc-400 block mb-1">
-                  IMEI / Nº de Série
-                </label>
+                <label className="text-zinc-400 block mb-1">IMEI / Nº de Série</label>
                 <input
                   type="text"
                   placeholder="Opcional..."
@@ -333,9 +365,7 @@ export const NovaOS: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="text-zinc-400 block mb-1">
-                  Senha de Desbloqueio
-                </label>
+                <label className="text-zinc-400 block mb-1">Senha de Desbloqueio</label>
                 <input
                   type="text"
                   placeholder="PIN / Padrão..."
@@ -348,9 +378,7 @@ export const NovaOS: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-zinc-400 block mb-1">
-                  Data de Abertura
-                </label>
+                <label className="text-zinc-400 block mb-1">Data de Abertura</label>
                 <input
                   type="date"
                   value={dataAbertura}
@@ -359,9 +387,7 @@ export const NovaOS: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="text-zinc-400 block mb-1">
-                  Previsão de Entrega
-                </label>
+                <label className="text-zinc-400 block mb-1">Previsão de Entrega</label>
                 <input
                   type="date"
                   value={dataPrevista}
@@ -381,9 +407,7 @@ export const NovaOS: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Serviço Padrão (Opcional)
-              </label>
+              <label className="text-zinc-400 block mb-1">Serviço Padrão (Opcional)</label>
               <select
                 value={servicoSelecionadoId}
                 onChange={handleSelecionarServico}
@@ -392,8 +416,7 @@ export const NovaOS: React.FC = () => {
                 <option value="">Selecione da base de serviços...</option>
                 {listaServicos.map((s) => (
                   <option key={s.id_servico} value={s.id_servico}>
-                    {s.nome} (Sugerido: R${" "}
-                    {Number(s.preco_sugerido || 0).toFixed(2)})
+                    {s.nome} (Sugerido: R$ {Number(s.preco_sugerido || 0).toFixed(2)})
                   </option>
                 ))}
               </select>
@@ -416,9 +439,7 @@ export const NovaOS: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Diagnóstico Técnico
-              </label>
+              <label className="text-zinc-400 block mb-1">Diagnóstico Técnico</label>
               <input
                 type="text"
                 placeholder="Ex: Display quebrado sem imagem..."
@@ -428,9 +449,7 @@ export const NovaOS: React.FC = () => {
               />
             </div>
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Observações Internas
-              </label>
+              <label className="text-zinc-400 block mb-1">Observações Internas</label>
               <input
                 type="text"
                 placeholder="Ex: Aparelho sem gaveta de chip..."
@@ -444,43 +463,33 @@ export const NovaOS: React.FC = () => {
           {/* Custos e Valores */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2 border-t border-zinc-800">
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Custo da Peça (R$)
-              </label>
+              <label className="text-zinc-400 block mb-1">Custo da Peça (R$)</label>
               <input
                 type="number"
                 step="0.01"
                 placeholder="0.00"
                 value={custoPeca}
                 onChange={(e) =>
-                  setCustoPeca(
-                    e.target.value === "" ? "" : Number(e.target.value),
-                  )
+                  setCustoPeca(e.target.value === "" ? "" : Number(e.target.value))
                 }
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Frete Real (R$)
-              </label>
+              <label className="text-zinc-400 block mb-1">Frete Real (R$)</label>
               <input
                 type="number"
                 step="0.01"
                 placeholder="0.00"
                 value={freteReal}
                 onChange={(e) =>
-                  setFreteReal(
-                    e.target.value === "" ? "" : Number(e.target.value),
-                  )
+                  setFreteReal(e.target.value === "" ? "" : Number(e.target.value))
                 }
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="text-zinc-400 block mb-1">
-                Fornecedor da Peça
-              </label>
+              <label className="text-zinc-400 block mb-1">Fornecedor da Peça</label>
               <select
                 value={fornecedorPeca}
                 onChange={(e) => setFornecedorPeca(e.target.value)}
@@ -496,7 +505,7 @@ export const NovaOS: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-zing-400 block mb-1 font-bold text-amber-400">
+              <label className="text-zinc-400 block mb-1 font-bold text-amber-400">
                 Forma de Pagamento
               </label>
               <select
