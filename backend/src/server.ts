@@ -170,7 +170,7 @@ app.post("/v1/orcamentos/calcular", async (req: Request, res: Response) => {
 });
 
 app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
-  const connection = await pool.getConnection();
+  const connection = await pool.getConnection(); 
   try {
     await connection.beginTransaction();
     const {
@@ -181,7 +181,12 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
       checklistEntrada,
       orcamentoCalculado,
       possuiGarantia,
+      formaPagamento,
     } = req.body;
+
+    if (!formaPagamento) {
+      return res.status(400).json({sucesso: false, erro: "A forma de pagamento é obrigatoria. "});
+    }
 
     let clienteId = cliente?.idCliente;
     if (!clienteId || typeof clienteId !== "string" || clienteId.trim() === "") {
@@ -239,8 +244,8 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
 
     await connection.query(
       `INSERT INTO ordens_servico 
-       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, possui_garantia, historico_json) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, possui_garantia, historico_json, forma_pagamento) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         osId,
         numeroOsGerado,
@@ -259,6 +264,7 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
         dataFinalAbertura,
         statusGarantiaDb,
         JSON.stringify(historicoInicial),
+        formaPagamento,
       ]
     );
 
@@ -403,6 +409,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       data_abertura,
       data_conclusao,
       orcamentoCalculado,
+      formaPagamento,
     } = req.body;
 
     // 1. Atualizar dados da OS principal
@@ -435,6 +442,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       `UPDATE ordens_servico SET 
         status_os = ?, 
         defeito_relatado = ?, 
+        forma_pagamento = COALESCE(?, forma_pagamento),
         subtotal_servicos = ?, 
         desconto_valor = ?, 
         valor_total = ?, 
@@ -449,6 +457,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
         status_os || "AGUARDANDO_AVALIACAO",
         defeitoRelatado || "",
         subtotal,
+        formaPagamento || null,
         desconto,
         valorTotal,
         lucroReal,
