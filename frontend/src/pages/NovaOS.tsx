@@ -58,7 +58,7 @@ export const NovaOS: React.FC = () => {
   const [carregando, setCarregando] = useState(false);
   const [sucessoMsg, setSucessoMsg] = useState("");
 
-  const [checklist, setChecklist] = useState({
+  const [checklist] = useState({
     tela: "Bom",
     bateria: "Bom",
     carregamento: "Funcionando",
