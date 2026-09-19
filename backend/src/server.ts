@@ -182,10 +182,12 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
       orcamentoCalculado,
       possuiGarantia,
       formaPagamento,
+      parcelas,
+      valorLiquido,
     } = req.body;
 
     if (!formaPagamento) {
-      return res.status(400).json({sucesso: false, erro: "A forma de pagamento é obrigatoria. "});
+      return res.status(400).json({ sucesso: false, erro: "A forma de pagamento é obrigatória." });
     }
 
     let clienteId = cliente?.idCliente;
@@ -227,7 +229,13 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
     const valorTotal = Number(orcamentoCalculado?.valorTotalOrcamento) || 0;
     const subtotal = Number(orcamentoCalculado?.subtotalServicos) || (valorTotal + desconto);
     
-    const lucroReal = valorTotal - (numPeca + numFrete);
+    // Lucro real recalculado considerando o valor líquido que realmente entrou no caixa
+    const numParcelas = Number(parcelas) || 1;
+    const numValorLiquido = valorLiquido !== "" && valorLiquido !== undefined && valorLiquido !== null 
+      ? Number(valorLiquido) 
+      : valorTotal;
+
+    const lucroReal = numValorLiquido - (numPeca + numFrete);
     const fornecedorPeca = orcamentoCalculado?.fornecedorPeca || null;
 
     const dataFinalAbertura = formatarDataLocal(dataAbertura) || new Date();
@@ -244,8 +252,8 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
 
     await connection.query(
       `INSERT INTO ordens_servico 
-       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, possui_garantia, historico_json, forma_pagamento) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id_os, numero_os, id_cliente, id_aparelho, status_os, defeito_relatado, checklist_entrada, subtotal_servicos, desconto_valor, valor_total, lucro_estimado_total, custo_peca, frete_real, fornecedor_peca, data_abertura, possui_garantia, historico_json, forma_pagamento, parcelas, valor_liquido) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         osId,
         numeroOsGerado,
@@ -265,6 +273,8 @@ app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
         statusGarantiaDb,
         JSON.stringify(historicoInicial),
         formaPagamento,
+        numParcelas,
+        numValorLiquido,
       ]
     );
 
@@ -299,6 +309,9 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
     const selectFrete = colunasExistentes.has('frete_real') ? 'os.frete_real AS freteReal' : '0 AS freteReal';
     const selectFornecedor = colunasExistentes.has('fornecedor_peca') ? 'os.fornecedor_peca AS fornecedorPeca' : 'NULL AS fornecedorPeca';
     const selectPossuiGarantia = colunasExistentes.has('possui_garantia') ? 'os.possui_garantia AS possuiGarantiaDb' : '1 AS possuiGarantiaDb';
+    const selectFormaPagamento = colunasExistentes.has('forma_pagamento') ? 'os.forma_pagamento AS formaPagamento' : "'PIX' AS formaPagamento";
+    const selectParcelas = colunasExistentes.has('parcelas') ? 'os.parcelas AS parcelas' : '1 AS parcelas';
+    const selectValorLiquido = colunasExistentes.has('valor_liquido') ? 'os.valor_liquido AS valorLiquido' : 'os.valor_total AS valorLiquido';
 
     const [rows]: any = await pool.query(`
       SELECT 
@@ -309,6 +322,7 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
         ${selectPossuiGarantia},
         ${selectGarantia}, ${selectHistorico}, ${selectChecklist},
         ${selectCusto}, ${selectFrete}, ${selectFornecedor},
+        ${selectFormaPagamento}, ${selectParcelas}, ${selectValorLiquido},
         c.nome AS clienteNome, c.cpf_cnpj AS clienteCpfCnpj, c.whatsapp AS clienteWhatsapp, c.email AS clienteEmail,
         a.modelo AS aparelhoModelo, a.imei_1 AS aparelhoImei1, a.senha_desbloqueio AS aparelhoSenhaDesbloqueio
       FROM ordens_servico os
@@ -348,8 +362,11 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
       const numPeca = Number(row.custoPeca || 0);
       const numFrete = Number(row.freteReal || 0);
       const valorTotalCobrado = Number(row.valorTotal || 0);
+      const valorLiqRecebido = Number(row.valorLiquido || valorTotalCobrado);
       const custoGarantia = Number((garantia as any)?.custoPecaGarantia || (garantia as any)?.prejuizoTotalGarantia || 0);
-      const lucroRealRecalculado = valorTotalCobrado - (numPeca + numFrete + custoGarantia);
+      
+      // O lucro real baseia-se no valor líquido efetivo que entrou no caixa
+      const lucroRealRecalculado = valorLiqRecebido - (numPeca + numFrete + custoGarantia);
       const possuiGarantiaFlag = row.possuiGarantiaDb !== 0 && row.possuiGarantiaDb !== false;
 
       return {
@@ -362,6 +379,9 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
         garantia: garantia,
         possuiGarantia: possuiGarantiaFlag,
         historico: historico,
+        formaPagamento: row.formaPagamento || "PIX",
+        parcelas: Number(row.parcelas || 1),
+        valorLiquido: valorLiqRecebido,
         cliente: {
           nome: row.clienteNome || "Cliente sem nome",
           cpfCnpj: row.clienteCpfCnpj || "",
@@ -402,29 +422,21 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       aparelho,
       status_os,
       defeitoRelatado,
-      diagnostico,
-      servicoRealizado,
-      pecasUtilizadas,
-      observacoes,
-      data_abertura,
-      data_conclusao,
+      forma_pagamento,
+      parcelas,
+      valor_liquido,
       orcamentoCalculado,
-      formaPagamento,
     } = req.body;
 
-    // 1. Atualizar dados da OS principal
     const numPeca = Number(orcamentoCalculado?.custoPeca) || 0;
     const numFrete = Number(orcamentoCalculado?.freteReal) || 0;
     const valorTotal = Number(orcamentoCalculado?.valorTotalOrcamento) || 0;
     const subtotal = Number(orcamentoCalculado?.subtotalServicos) || valorTotal;
     const desconto = Number(orcamentoCalculado?.descontoGeralAplicado) || 0;
-    const lucroReal = valorTotal - (numPeca + numFrete);
+    const valLiqUpdate = valor_liquido !== undefined && valor_liquido !== null ? Number(valor_liquido) : valorTotal;
+    const lucroReal = valLiqUpdate - (numPeca + numFrete);
     const fornecedorPeca = orcamentoCalculado?.fornecedorPeca || null;
 
-    const dataAberturaDb = formatarDataLocal(data_abertura);
-    const dataConclusaoDb = formatarDataLocal(data_conclusao);
-
-    // Buscar os IDs de cliente e aparelho vinculados a esta OS
     const [osRows]: any = await connection.query(
       "SELECT id_cliente, id_aparelho FROM ordens_servico WHERE id_os = ?",
       [id]
@@ -437,40 +449,38 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
 
     const { id_cliente, id_aparelho } = osRows[0];
 
-    // Atualizar tabela ordens_servico
     await connection.query(
       `UPDATE ordens_servico SET 
         status_os = ?, 
         defeito_relatado = ?, 
         forma_pagamento = COALESCE(?, forma_pagamento),
+        parcelas = COALESCE(?, parcelas),
+        valor_liquido = COALESCE(?, valor_liquido),
         subtotal_servicos = ?, 
         desconto_valor = ?, 
         valor_total = ?, 
         lucro_estimado_total = ?, 
         custo_peca = ?, 
         frete_real = ?, 
-        fornecedor_peca = ?, 
-        data_abertura = COALESCE(?, data_abertura), 
-        data_conclusao = ? 
+        fornecedor_peca = ? 
        WHERE id_os = ?`,
       [
         status_os || "AGUARDANDO_AVALIACAO",
         defeitoRelatado || "",
+        forma_pagamento || null,
+        parcelas || null,
+        valLiqUpdate,
         subtotal,
-        formaPagamento || null,
         desconto,
         valorTotal,
         lucroReal,
         numPeca,
         numFrete,
         fornecedorPeca,
-        dataAberturaDb,
-        dataConclusaoDb,
         id,
       ]
     );
 
-    // Atualizar dados do Cliente vinculado
     if (id_cliente && cliente) {
       await connection.query(
         "UPDATE clientes SET nome = ?, whatsapp = ? WHERE id_cliente = ?",
@@ -478,7 +488,6 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
       );
     }
 
-    // Atualizar dados do Aparelho vinculado
     if (id_aparelho && aparelho) {
       await connection.query(
         "UPDATE aparelhos_cliente SET modelo = ?, imei_1 = ?, senha_desbloqueio = ? WHERE id_aparelho = ?",
@@ -512,7 +521,6 @@ app.delete("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Excluir Cliente
 app.delete("/v1/clientes/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

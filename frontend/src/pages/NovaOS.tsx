@@ -23,7 +23,6 @@ export const NovaOS: React.FC = () => {
     "Moto G13", "Moto G14", "Moto G23", "Moto G24", "Moto G32", "Moto G52", "Moto G53", "Moto G54", "Moto Edge 30", "Moto Edge 40"
   ];
 
-  // Estado para controlar as sugestões do autocomplete
   const [sugestoesAparelho, setSugestoesAparelho] = useState<string[]>([]);
 
   const [idClienteSelecionado, setIdClienteSelecionado] = useState("");
@@ -41,6 +40,9 @@ export const NovaOS: React.FC = () => {
 
   const [custoPeca, setCustoPeca] = useState<number | "">("");
   const [formaPagamento, setFormaPagamento] = useState("PIX");
+  const [parcelas, setParcelas] = useState<number>(1);
+  const [valorLiquido, setValorLiquido] = useState<number | "">("");
+
   const [freteReal, setFreteReal] = useState<number | "">("");
   const [fornecedorPeca, setFornecedorPeca] = useState("");
   const [descontoGeral, setDescontoGeral] = useState<number | "">("");
@@ -162,6 +164,8 @@ export const NovaOS: React.FC = () => {
         checklistEntrada: checklist,
         possuiGarantia,
         formaPagamento,
+        parcelas,
+        valorLiquido: formaPagamento === "Cartão de Crédito" && parcelas <= 3 && valorLiquido !== "" ? Number(valorLiquido) : null,
         orcamentoCalculado: {
           custoPeca: custoPeca === "" ? 0 : Number(custoPeca),
           freteReal: freteReal === "" ? 0 : Number(freteReal),
@@ -194,6 +198,8 @@ export const NovaOS: React.FC = () => {
         setDescontoGeral("");
         setValorTotalOrcamento("");
         setFormaPagamento("PIX");
+        setParcelas(1);
+        setValorLiquido("");
       } else {
         alert("Erro ao criar OS.");
       }
@@ -272,7 +278,7 @@ export const NovaOS: React.FC = () => {
                 onChange={handleSelecionarCliente}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
               >
-                <option value="">Clientes Cadastrados</option>
+                <option value="">Ou selecione da base de cadastros...</option>
                 {listaClientes.map((c) => (
                   <option key={c.id_cliente} value={c.id_cliente}>
                     {c.nome} — {c.whatsapp || "Sem WhatsApp"}
@@ -461,7 +467,7 @@ export const NovaOS: React.FC = () => {
           </div>
 
           {/* Custos e Valores */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2 border-t border-zinc-800">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 pt-2 border-t border-zinc-800">
             <div>
               <label className="text-zinc-400 block mb-1">Custo da Peça (R$)</label>
               <input
@@ -506,11 +512,17 @@ export const NovaOS: React.FC = () => {
 
             <div>
               <label className="text-zinc-400 block mb-1 font-bold text-amber-400">
-                Forma de Pagamento
+                Forma de Pagto *
               </label>
               <select
                 value={formaPagamento}
-                onChange={(e) => setFormaPagamento(e.target.value)}
+                onChange={(e) => {
+                  setFormaPagamento(e.target.value);
+                  if (e.target.value !== "Cartão de Crédito") {
+                    setParcelas(1);
+                    setValorLiquido("");
+                  }
+                }}
                 className="w-full bg-zinc-950 border border-amber-500/50 rounded-xl p-2.5 text-amber-400 font-bold outline-none focus:border-amber-500"
               >
                 <option value="PIX">PIX</option>
@@ -520,9 +532,53 @@ export const NovaOS: React.FC = () => {
               </select>
             </div>
 
+            {/* SE FOR CARTÃO DE CRÉDITO: Exibe Parcelas */}
+            {formaPagamento === "Cartão de Crédito" && (
+              <div>
+                <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
+                  Parcelas
+                </label>
+                <select
+                  value={parcelas}
+                  onChange={(e) => {
+                    const p = Number(e.target.value);
+                    setParcelas(p);
+                    if (p > 3) setValorLiquido("");
+                  }}
+                  className="w-full bg-zinc-950 border border-blue-500/50 rounded-xl p-2.5 text-blue-400 font-bold outline-none focus:border-blue-500"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
+                    <option key={num} value={num}>
+                      {num}x {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* SE FOR CARTÃO DE CRÉDITO EM ATÉ 3X: Exibe Valor Líquido */}
+            {formaPagamento === "Cartão de Crédito" && parcelas <= 3 && (
+              <div>
+                <label className="text-zinc-400 block mb-1 font-bold text-purple-400">
+                  Valor Líquido (R$) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="Ex: 232.00"
+                  value={valorLiquido}
+                  onChange={(e) =>
+                    setValorLiquido(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  className="w-full bg-zinc-950 border border-purple-500/50 rounded-xl p-2.5 text-purple-400 font-bold outline-none focus:border-purple-500"
+                />
+              </div>
+            )}
+
             <div>
               <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">
-                Valor Final Cobrado (R$) *
+                Valor Cobrado (R$) *
               </label>
               <input
                 type="number"

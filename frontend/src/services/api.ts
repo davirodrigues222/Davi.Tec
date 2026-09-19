@@ -1,20 +1,9 @@
-import type { 
-  ClientePayload, 
-  AparelhoPayload, 
-  ChecklistEntrada, 
-  ItemOrcamentoInput, 
-  OrcamentoCalculadoResult, 
-  OrdemServico,
-  StatusOS,
-  RegistroGarantia
-} from '../types';
-
 const API_BASE_URL = 'http://localhost:3000/v1';
 
 export async function calcularOrcamento(
-  itens: ItemOrcamentoInput[],
+  itens: any[],
   descontoGeral: { valor: number } = { valor: 0 }
-): Promise<OrcamentoCalculadoResult> {
+): Promise<any> {
   try {
     const response = await fetch(`${API_BASE_URL}/orcamentos/calcular`, {
       method: 'POST',
@@ -43,8 +32,8 @@ export async function calcularOrcamento(
 }
 
 export async function criarOrdemServico(payload: {
-  cliente: ClientePayload;
-  aparelho: AparelhoPayload;
+  cliente: any;
+  aparelho: any;
   defeitoRelatado: string;
   diagnostico?: string;
   servicoRealizado?: string;
@@ -52,8 +41,12 @@ export async function criarOrdemServico(payload: {
   observacoes?: string;
   dataAbertura?: string;
   dataPrevistaEntrega?: string;
-  checklistEntrada: ChecklistEntrada;
-  orcamentoCalculado: OrcamentoCalculadoResult;
+  checklistEntrada: any;
+  orcamentoCalculado: any;
+  possuiGarantia?: boolean;
+  formaPagamento?: string;
+  parcelas?: number;
+  valorLiquido?: number | null;
 }): Promise<{ idOs: string; numeroOs: string }> {
   const response = await fetch(`${API_BASE_URL}/ordens-servico`, {
     method: 'POST',
@@ -79,7 +72,7 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   }
 }
 
-export async function buscarOrdensServico(): Promise<OrdemServico[]> {
+export async function buscarOrdensServico(): Promise<any[]> {
   try {
     const response = await fetch(`${API_BASE_URL}/ordens-servico`);
     const json = await response.json();
@@ -96,7 +89,7 @@ export async function buscarOrdensServico(): Promise<OrdemServico[]> {
   }
 }
 
-export async function atualizarStatusOS(id_os: string, status_os: StatusOS): Promise<void> {
+export async function atualizarStatusOS(id_os: string, status_os: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/ordens-servico/${id_os}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -110,7 +103,7 @@ export async function atualizarStatusOS(id_os: string, status_os: StatusOS): Pro
 
 export async function registrarGarantiaOS(
   id_os: string,
-  garantia: RegistroGarantia,
+  garantia: any,
   descricaoOcorrencia?: string
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/ordens-servico/${id_os}/garantia`, {

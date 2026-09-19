@@ -61,14 +61,14 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
 
   return (
     <div className={`min-h-screen flex print:bg-white print:text-black transition-colors duration-300 ${estiloAtual.appBg}`}>
-      {/* Sidebar */}
-      <aside className={`w-64 border-r flex flex-col print:hidden transition-colors duration-300 ${estiloAtual.sidebar}`}>
+      {/* Sidebar com largura aumentada para w-80 */}
+      <aside className={`w-80 border-r flex flex-col print:hidden transition-colors duration-300 ${estiloAtual.sidebar}`}>
         <div className="p-6 border-b border-inherit">
           <div className="flex items-center space-x-3">
             {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800" />
+              <img src={logoUrl} alt="Logo" className="w-12 h-12 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800" />
             ) : (
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30">
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30 text-base">
                 SC
               </div>
             )}
@@ -79,69 +79,75 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1.5">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'dashboard' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>📊 Dashboard</span>
+            <span className="text-sm">📊</span>
+            <span>Dashboard</span>
           </button>
 
           <button
             onClick={() => setActiveTab('relatorios')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'relatorios' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>📈 Análises & Relatórios</span>
+            <span className="text-sm">📈</span>
+            <span>Análises & Relatórios</span>
           </button>
 
           <button
             onClick={() => setActiveTab('historico')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'historico' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>📋 Histórico de Serviços</span>
+            <span className="text-sm">📋</span>
+            <span>Histórico de Serviços</span>
           </button>
 
           <button
             onClick={() => setActiveTab('nova-os')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'nova-os' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>➕ Nova Ordem de Serviço</span>
+            <span className="text-sm">➕</span>
+            <span>Nova Ordem de Serviço</span>
           </button>
 
           <button
             onClick={() => setActiveTab('garantia-retorno')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'garantia-retorno' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>⚠️ Garantia / Retorno</span>
+            <span className="text-sm">⚠️</span>
+            <span>Garantia / Retorno</span>
           </button>
 
-          {/* 📁 ABA DE CADASTROS ADICIONADA AQUI */}
           <button
             onClick={() => setActiveTab('cadastros')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'cadastros' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>📁 Cadastros</span>
+            <span className="text-sm">📁</span>
+            <span>Cadastros</span>
           </button>
 
           <button
             onClick={() => setActiveTab('configuracoes')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
               activeTab === 'configuracoes' ? estiloAtual.activeTab : estiloAtual.navHover
             }`}
           >
-            <span>⚙️ Configurações</span>
+            <span className="text-sm">⚙️</span>
+            <span>Configurações</span>
           </button>
         </nav>
 

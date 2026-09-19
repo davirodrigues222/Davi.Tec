@@ -58,6 +58,7 @@ export const HistoricoServicos: React.FC = () => {
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [abaModal, setAbaModal] = useState<'detalhes' | 'checklist' | 'historico'>('detalhes');
 
+  // Estados do Formulário de Edição
   const [editNome, setEditNome] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
   const [editModelo, setEditModelo] = useState('');
@@ -74,6 +75,12 @@ export const HistoricoServicos: React.FC = () => {
   const [editFornecedor, setEditFornecedor] = useState('');
   const [editDesconto, setEditDesconto] = useState<number | ''>('');
   const [editValorTotal, setEditValorTotal] = useState<number | ''>('');
+  
+  // Novos Estados Financeiros de Edição
+  const [editFormaPagamento, setEditFormaPagamento] = useState('PIX');
+  const [editParcelas, setEditParcelas] = useState<number>(1);
+  const [editValorLiquido, setEditValorLiquido] = useState<number | ''>('');
+
   const [editDataAbertura, setEditDataAbertura] = useState('');
   const [editDataConclusao, setEditDataConclusao] = useState('');
 
@@ -105,7 +112,7 @@ export const HistoricoServicos: React.FC = () => {
     }, 200);
   };
 
-  const abrirEdicao = (os: OrdemServico) => {
+  const abrirEdicao = (os: any) => {
     setOsParaEditar(os);
     setEditNome(os.cliente?.nome || '');
     setEditWhatsapp(os.cliente?.whatsapp || '');
@@ -133,6 +140,11 @@ export const HistoricoServicos: React.FC = () => {
     const total = os.orcamentoCalculado?.valorTotalOrcamento;
     setEditValorTotal(total !== undefined && total !== null ? total : '');
 
+    // Carregando dados financeiros salvos
+    setEditFormaPagamento(os.formaPagamento || 'PIX');
+    setEditParcelas(os.parcelas || 1);
+    setEditValorLiquido(os.valorLiquido !== undefined && os.valorLiquido !== null ? os.valorLiquido : '');
+
     setEditDataAbertura(
       os.data_abertura ? new Date(os.data_abertura).toISOString().substring(0, 10) : ''
     );
@@ -151,6 +163,9 @@ export const HistoricoServicos: React.FC = () => {
       const numCustoPeca = editCustoPeca === '' ? 0 : Number(editCustoPeca);
       const numFrete = editFrete === '' ? 0 : Number(editFrete);
       const numDesconto = editDesconto === '' ? 0 : Number(editDesconto);
+      const numValorLiquidoFinal = editFormaPagamento === 'Cartão de Crédito' && editParcelas <= 3 && editValorLiquido !== '' 
+        ? Number(editValorLiquido) 
+        : numValorTotal;
 
       if (editStatus !== osParaEditar.status_os) {
         logs.push(`Status alterado para ${editStatus.replace('_', ' ')}`);
@@ -158,15 +173,10 @@ export const HistoricoServicos: React.FC = () => {
       if (numValorTotal !== osParaEditar.orcamentoCalculado?.valorTotalOrcamento) {
         logs.push(`Valor alterado de R$ ${osParaEditar.orcamentoCalculado?.valorTotalOrcamento} para R$ ${numValorTotal}`);
       }
-      if (numCustoPeca !== osParaEditar.orcamentoCalculado?.custoPeca) {
-        logs.push(`Custo alterado de R$ ${osParaEditar.orcamentoCalculado?.custoPeca} para R$ ${numCustoPeca}`);
-      }
-      if (numFrete !== osParaEditar.orcamentoCalculado?.freteReal) {
-        logs.push(`Frete alterado de R$ ${osParaEditar.orcamentoCalculado?.freteReal} para R$ ${numFrete}`);
-      }
 
       const custoGarantia = Number(osParaEditar.garantia?.custoPecaGarantia || osParaEditar.garantia?.prejuizoTotalGarantia || 0);
-      const lucroCalculado = numValorTotal - (numCustoPeca + numFrete + custoGarantia);
+      // Lucro calculado baseia-se no valor líquido real que entra no caixa
+      const lucroCalculado = numValorLiquidoFinal - (numCustoPeca + numFrete + custoGarantia);
 
       await editarOrdemServico(osParaEditar.id_os, {
         cliente: { ...osParaEditar.cliente, nome: editNome, whatsapp: editWhatsapp },
@@ -177,6 +187,9 @@ export const HistoricoServicos: React.FC = () => {
         servicoRealizado: editServico,
         pecasUtilizadas: editPecas,
         observacoes: editObservacoes,
+        forma_pagamento: editFormaPagamento,
+        parcelas: editParcelas,
+        valor_liquido: numValorLiquidoFinal,
         data_abertura: editDataAbertura || undefined,
         data_conclusao: editDataConclusao || undefined,
         orcamentoCalculado: {
@@ -272,13 +285,14 @@ export const HistoricoServicos: React.FC = () => {
                   <th className="p-4">Data Abertura</th>
                   <th className="p-4">Cliente / Contato</th>
                   <th className="p-4">Aparelho / Modelo</th>
-                  <th className="p-4">Defeito Relatado</th>
+                  <th className="p-4">Pagamento</th>
                   <th className="p-4 text-right">Valor Cobrado</th>
+                  <th className="p-4 text-right">Valor Líquido</th>
                   <th className="p-4 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                {ordensFiltradas.map((os) => (
+                {ordensFiltradas.map((os: any) => (
                   <tr key={os.id_os} className="hover:bg-zinc-800/30 transition">
                     <td className="p-4 font-mono font-bold text-blue-400">{os.numero_os}</td>
                     <td className="p-4 text-zinc-400">
@@ -289,9 +303,14 @@ export const HistoricoServicos: React.FC = () => {
                       <span className="block text-[10px] text-zinc-500 font-normal">{os.cliente?.whatsapp || '-'}</span>
                     </td>
                     <td className="p-4 font-medium text-zinc-200">{os.aparelho?.modelo}</td>
-                    <td className="p-4 max-w-xs truncate text-zinc-400">{os.defeitoRelatado}</td>
+                    <td className="p-4 text-amber-400 font-semibold">
+                      {os.formaPagamento || 'PIX'} {os.formaPagamento === 'Cartão de Crédito' ? `(${os.parcelas || 1}x)` : ''}
+                    </td>
                     <td className="p-4 text-right font-bold text-white">
                       R$ {(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
+                    </td>
+                    <td className="p-4 text-right font-bold text-purple-400">
+                      R$ {(os.valorLiquido !== undefined && os.valorLiquido !== null ? os.valorLiquido : (os.orcamentoCalculado?.valorTotalOrcamento || 0)).toFixed(2)}
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center space-x-2">
@@ -300,7 +319,7 @@ export const HistoricoServicos: React.FC = () => {
                             setOsSelecionada(os);
                             setAbaModal('detalhes');
                           }}
-                          className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition"
+                          className="px-3 py-1.5 bg-blue-600/25 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition"
                         >
                           👁️ Detalhes
                         </button>
@@ -350,7 +369,7 @@ export const HistoricoServicos: React.FC = () => {
                   <span>Editar OS</span>
                 </button>
 
-                {/* O BOTÃO DE IMPRESSÃO SÓ APARECE SE O SERVIÇO TIVER GARANTIA (NÃO FOR FALSE E NEM 0) */}
+                {/* O BOTÃO DE IMPRESSÃO SÓ APARECE SE O SERVIÇO TIVER GARANTIA */}
                 {osSelecionada.possuiGarantia !== false && Number(osSelecionada.possuiGarantia) !== 0 && (
                   <button
                     onClick={() => handleImprimir(osSelecionada)}
@@ -406,7 +425,7 @@ export const HistoricoServicos: React.FC = () => {
                   {(osSelecionada.possuiGarantia === false || Number(osSelecionada.possuiGarantia) === 0) && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 flex items-center space-x-2">
                       <span>⚠️</span>
-                      <span><strong>Atenção:</strong> Este atendimento foi cadastrado <strong>sem cobertura de garantia</strong>. A emissão de termos e comprovantes de garantia está desativada.</span>
+                      <span><strong>Atenção:</strong> Este atendimento foi cadastrado <strong>sem cobertura de garantia</strong>.</span>
                     </div>
                   )}
 
@@ -418,9 +437,9 @@ export const HistoricoServicos: React.FC = () => {
                       </p>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">Previsão Entrega</span>
-                      <p className="font-semibold text-zinc-200">
-                        {osSelecionada.data_prevista_entrega ? new Date(osSelecionada.data_prevista_entrega).toLocaleDateString('pt-BR') : 'Não informada'}
+                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">Forma de Pagamento</span>
+                      <p className="font-semibold text-amber-400">
+                        {(osSelecionada as any).formaPagamento || 'PIX'} {(osSelecionada as any).formaPagamento === 'Cartão de Crédito' ? `(${(osSelecionada as any).parcelas || 1}x)` : ''}
                       </p>
                     </div>
                     <div>
@@ -436,86 +455,33 @@ export const HistoricoServicos: React.FC = () => {
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">👤 Informações do Cliente</span>
                       <p className="font-bold text-white text-sm">{osSelecionada.cliente?.nome}</p>
                       <p className="text-zinc-400"><strong>WhatsApp:</strong> {osSelecionada.cliente?.whatsapp || 'Não informado'}</p>
-                      <p className="text-zinc-400"><strong>CPF/CNPJ:</strong> {osSelecionada.cliente?.cpfCnpj || 'Não informado'}</p>
-                      <p className="text-zinc-400"><strong>E-mail:</strong> {osSelecionada.cliente?.email || 'Não informado'}</p>
                     </div>
 
                     <div className="space-y-1 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-4">
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">📱 Informações do Aparelho</span>
                       <p className="font-bold text-white text-sm">{osSelecionada.aparelho?.modelo}</p>
                       <p className="text-zinc-400"><strong>IMEI / N° Série:</strong> {osSelecionada.aparelho?.imei1 || 'Não informado'}</p>
-                      <p className="text-zinc-400"><strong>Senha do Aparelho:</strong> {osSelecionada.aparelho?.senhaDesbloqueio || 'Sem senha'}</p>
                     </div>
                   </div>
 
-                  <div className="space-y-3 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
+                  <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
                     <div>
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">Defeito Relatado pelo Cliente</span>
                       <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.defeitoRelatado}</p>
                     </div>
-                    <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">Diagnóstico Técnico</span>
-                      <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                        {osSelecionada.diagnostico || 'Aguardando diagnóstico em bancada.'}
-                      </p>
-                    </div>
-                    {osSelecionada.servicoRealizado && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Serviço Realizado</span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.servicoRealizado}</p>
-                      </div>
-                    )}
-                    {osSelecionada.observacoes && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Observações Gerais</span>
-                        <p className="text-zinc-400 mt-1 italic">{osSelecionada.observacoes}</p>
-                      </div>
-                    )}
                   </div>
 
-                  <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
-                    <span className="text-zinc-400 font-bold uppercase text-[10px] block border-b border-zinc-800/80 pb-2">
-                      📦 Custos de Entrada, Peças & Fornecedor (Uso Interno)
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded-lg">
-                        <span className="text-zinc-500 block text-[10px]">Custo Peça</span>
-                        <p className="font-bold text-rose-400 text-sm">
-                          R$ {(osSelecionada.orcamentoCalculado?.custoPeca || 0).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded-lg">
-                        <span className="text-zinc-500 block text-[10px]">Frete Real</span>
-                        <p className="font-bold text-amber-400 text-sm">
-                          R$ {(osSelecionada.orcamentoCalculado?.freteReal || 0).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded-lg">
-                        <span className="text-zinc-500 block text-[10px]">Fornecedor</span>
-                        <p className="font-bold text-blue-400 text-sm truncate">
-                          {osSelecionada.orcamentoCalculado?.fornecedorPeca || 'Não informado'}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded-lg">
-                        <span className="text-zinc-500 block text-[10px]">Desconto</span>
-                        <p className="font-bold text-zinc-300 text-sm">
-                          R$ {(osSelecionada.orcamentoCalculado?.descontoGeralAplicado || 0).toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-zinc-950 border border-emerald-500/30 rounded-xl flex justify-between items-center">
-                    <div>
-                      <span className="text-emerald-400 font-bold uppercase text-[10px] block">Lucro Líquido Real</span>
-                      <p className="text-xl font-extrabold text-emerald-400">
-                        R$ {(osSelecionada.orcamentoCalculado?.lucroTotalEstimadoInterno || 0).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-zinc-500 text-[10px] block uppercase font-bold">Valor Total Cobrado</span>
-                      <p className="text-2xl font-black text-white">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
+                      <span className="text-zinc-400 uppercase text-[10px] font-bold block">Valor Cobrado Total</span>
+                      <p className="text-xl font-black text-white mt-1">
                         R$ {(osSelecionada.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-zinc-950 border border-purple-500/30 rounded-xl">
+                      <span className="text-purple-400 uppercase text-[10px] font-bold block">Valor Líquido (Caixa)</span>
+                      <p className="text-xl font-black text-purple-400 mt-1">
+                        R$ {Number((osSelecionada as any).valorLiquido || osSelecionada.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -547,7 +513,7 @@ export const HistoricoServicos: React.FC = () => {
                   <h4 className="font-bold text-white uppercase text-[10px]">Linha do Tempo de Ocorrências e Edições</h4>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {osSelecionada.historico && osSelecionada.historico.length > 0 ? (
-                      osSelecionada.historico.map((item) => (
+                      osSelecionada.historico.map((item: any) => (
                         <div key={item.id} className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg">
                           <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
                             <span>{new Date(item.data).toLocaleString('pt-BR')}</span>
@@ -567,7 +533,7 @@ export const HistoricoServicos: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL EDIÇÃO */}
+      {/* MODAL EDIÇÃO COMPLETO COM CAMPOS FINANCEIROS */}
       {osParaEditar && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
@@ -637,27 +603,6 @@ export const HistoricoServicos: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-zinc-400 block mb-1">Data Abertura</label>
-                  <input
-                    type="date"
-                    value={editDataAbertura}
-                    onChange={(e) => setEditDataAbertura(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">Data Conclusão</label>
-                  <input
-                    type="date"
-                    value={editDataConclusao}
-                    onChange={(e) => setEditDataConclusao(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="text-zinc-400 block mb-1">Defeito Relatado</label>
                 <textarea
@@ -668,11 +613,82 @@ export const HistoricoServicos: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-2 border-t border-zinc-800">
+              {/* NOVOS CAMPOS FINANCEIROS NA EDIÇÃO */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-zinc-800">
+                <div>
+                  <label className="text-zinc-400 block mb-1 font-bold text-amber-400">Forma de Pagto</label>
+                  <select
+                    value={editFormaPagamento}
+                    onChange={(e) => {
+                      setEditFormaPagamento(e.target.value);
+                      if (e.target.value !== "Cartão de Crédito") {
+                        setEditParcelas(1);
+                        setEditValorLiquido("");
+                      }
+                    }}
+                    className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                  </select>
+                </div>
+
+                {editFormaPagamento === "Cartão de Crédito" && (
+                  <div>
+                    <label className="text-zinc-400 block mb-1 font-bold text-blue-400">Parcelas</label>
+                    <select
+                      value={editParcelas}
+                      onChange={(e) => {
+                        const p = Number(e.target.value);
+                        setEditParcelas(p);
+                        if (p > 3) setEditValorLiquido("");
+                      }}
+                      className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
+                        <option key={num} value={num}>
+                          {num}x {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {editFormaPagamento === "Cartão de Crédito" && editParcelas <= 3 && (
+                  <div>
+                    <label className="text-zinc-400 block mb-1 font-bold text-purple-400">Valor Líquido (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex: 29.10"
+                      value={editValorLiquido}
+                      onChange={(e) => setEditValorLiquido(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full bg-zinc-950 border border-purple-500/50 rounded-lg p-2.5 text-purple-400 font-bold outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">Valor Cobrado Total (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={editValorTotal}
+                    onChange={(e) => setEditValorTotal(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-emerald-500/50 rounded-lg p-2.5 text-emerald-400 font-bold outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
                 <div>
                   <label className="text-zinc-400 block mb-1">Custo Peça (R$)</label>
                   <input
                     type="number"
+                    step="0.01"
                     placeholder="0.00"
                     value={editCustoPeca}
                     onChange={(e) => setEditCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
@@ -683,6 +699,7 @@ export const HistoricoServicos: React.FC = () => {
                   <label className="text-zinc-400 block mb-1">Frete Real (R$)</label>
                   <input
                     type="number"
+                    step="0.01"
                     placeholder="0.00"
                     value={editFrete}
                     onChange={(e) => setEditFrete(e.target.value === '' ? '' : Number(e.target.value))}
@@ -696,16 +713,6 @@ export const HistoricoServicos: React.FC = () => {
                     value={editFornecedor}
                     onChange={(e) => setEditFornecedor(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">Valor Cobrado Total (R$)</label>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    value={editValorTotal}
-                    onChange={(e) => setEditValorTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-emerald-400 font-bold outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -882,7 +889,7 @@ export const HistoricoServicos: React.FC = () => {
             </table>
             <div className="bg-slate-50 p-2 border-t border-slate-300 flex justify-between items-center text-[10px]">
               <div className="text-[9px] text-slate-500">
-                <p>Forma de Pagamento: A combinar no ato da entrega</p>
+                <p>Forma de Pagamento: {(osParaImprimir as any).formaPagamento || 'A combinar'} {(osParaImprimir as any).formaPagamento === 'Cartão de Crédito' ? `(${(osParaImprimir as any).parcelas || 1}x)` : ''}</p>
               </div>
               <div className="text-right">
                 <span className="text-[9px] uppercase font-bold text-slate-500 block">VALOR TOTAL DO ORÇAMENTO</span>
