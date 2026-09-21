@@ -179,6 +179,38 @@ export async function criarOrdemServico(payload: {
 }
 
 export async function editarOrdemServico(id_os: string, payload: any): Promise<void> {
+  // 1. Busca a OS atual para sabermos o id_cliente e o id_aparelho associados
+  const { data: osAtual, error: errBusca } = await supabase
+    .from('ordens_servico')
+    .select('id_cliente, id_aparelho')
+    .eq('id_os', id_os)
+    .single();
+
+  if (errBusca) throw new Error('Falha ao localizar Ordem de Serviço para edição.');
+
+  // 2. Se o cliente foi alterado, atualiza na tabela de clientes
+  if (payload.cliente?.nome && osAtual?.id_cliente) {
+    await supabase
+      .from('clientes')
+      .update({
+        nome: payload.cliente.nome.trim(),
+        whatsapp: payload.cliente.whatsapp || '',
+      })
+      .eq('id_cliente', osAtual.id_cliente);
+  }
+
+  // 3. Se o aparelho foi alterado, atualiza na tabela de aparelhos
+  if (payload.aparelho?.modelo && osAtual?.id_aparelho) {
+    await supabase
+      .from('aparelhos_cliente')
+      .update({
+        modelo: payload.aparelho.modelo.trim(),
+        imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null,
+      })
+      .eq('id_aparelho', osAtual.id_aparelho);
+  }
+
+  // 4. Prepara a atualização dos campos da Ordem de Serviço
   const dadosAtualizados: any = {};
 
   const defeito = payload.defeitoRelatado !== undefined ? payload.defeitoRelatado : payload.defeito_relatado;
@@ -198,7 +230,10 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   const obs = payload.observacoes !== undefined ? payload.observacoes : (payload.observacoes_internas !== undefined ? payload.observacoes_internas : payload.observacoesInternas);
   if (obs !== undefined) dadosAtualizados.observacoes_internas = obs;
 
-  // Edição da data de abertura com tratamento correto de fuso horário
+  if (payload.checklistEntrada !== undefined) {
+    dadosAtualizados.checklist_entrada = payload.checklistEntrada;
+  }
+
   const dataAberturaInput = payload.dataAbertura !== undefined ? payload.dataAbertura : payload.data_abertura;
   if (dataAberturaInput) {
     dadosAtualizados.data_abertura = formatarDataParaBanco(dataAberturaInput);
@@ -216,6 +251,9 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   }
   if (payload.orcamentoCalculado?.freteReal !== undefined) {
     dadosAtualizados.frete_real = payload.orcamentoCalculado.freteReal;
+  }
+  if (payload.orcamentoCalculado?.fornecedorPeca !== undefined) {
+    dadosAtualizados.fornecedor_peca = payload.orcamentoCalculado.fornecedorPeca;
   }
   if (payload.valor_liquido !== undefined) {
     dadosAtualizados.valor_liquido = payload.valor_liquido;
@@ -244,40 +282,78 @@ export async function buscarOrdensServico(): Promise<any[]> {
 
     if (error) throw error;
 
-    return (data || []).map((item: any) => ({
-      ...item,
-      id_os: item.id_os,
-      numero_os: item.numero_os,
-      status_os: item.status_os || 'AGUARDANDO_AVALIACAO',
-      defeitoRelatado: item.defeito_relatado || '',
-      diagnostico: item.diagnostico_tecnico || '',
-      observacoes: item.observacoes_internas || '',
-      formaPagamento: item.forma_pagamento || 'PIX',
-      parcelas: Number(item.parcelas || 1),
-      valorLiquido: Number(item.valor_liquido || item.valor_total || 0),
-      possuiGarantia: item.possui_garantia ?? true,
-      dataAbertura: item.data_abertura || '',
-      cliente: {
-        nome: item.clientes?.nome || item.cliente_nome || 'Cliente Balcão',
-        whatsapp: item.clientes?.whatsapp || item.cliente_telefone || '',
-      },
-      aparelho: {
-        modelo: item.aparelhos_cliente?.modelo || item.aparelho_modelo || 'Smartphone',
-        imei1: item.aparelhos_cliente?.imei_1 || item.aparelho_imei || '',
-      },
-      orcamentoCalculado: {
-        subtotalServicos: Number(item.subtotal_servicos || item.valor_total || 0),
-        tipoDesconto: item.tipo_desconto || 'VALOR',
-        descontoGeralAplicado: Number(item.desconto_valor || 0),
-        valorTotalOrcamento: Number(item.valor_total || 0),
-        lucroTotalEstimadoInterno: Number(item.lucro_estimado_total || 0),
-        custoPeca: Number(item.custo_peca || 0),
-        freteReal: Number(item.frete_real || 0),
-        fornecedorPeca: item.fornecedor_peca || '',
-      },
-      checklistEntrada: item.checklist_entrada || {},
-      garantia: item.garantia_json || undefined,
-    }));
+    return (data || []).map((item: any) => {
+      let garantiaRaw = item.garantia_json;
+      if (typeof garantiaRaw === 'string') {
+        try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
+      }
+
+      let listaRetornos: any[] = [];
+      if (Array.isArray(garantiaRaw)) {
+        listaRetornos = garantiaRaw;
+      } else if (garantiaRaw && typeof garantiaRaw === 'object') {
+        if (Array.isArray(garantiaRaw.listaRetornos)) {
+          listaRetornos = garantiaRaw.listaRetornos;
+        } else {
+          listaRetornos = [garantiaRaw];
+        }
+      }
+
+      let custoTotalGarantiaOS = 0;
+      listaRetornos.forEach((g: any) => {
+        const pecaG = Number(g?.custoPecaGarantia ?? g?.custo_peca_garantia ?? g?.custoPeca ?? g?.prejuizoTotalGarantia ?? 0);
+        const freteG = Number(g?.freteGarantia ?? g?.frete_garantia ?? g?.freteReal ?? g?.frete ?? 0);
+        custoTotalGarantiaOS += (pecaG + freteG);
+      });
+
+      const valorBruto = Number(item.valor_total || 0);
+      const valorLiq = Number(item.valor_liquido || valorBruto);
+      const pecaBase = Number(item.custo_peca || 0);
+      const freteBase = Number(item.frete_real || 0);
+
+      const lucroLiquidoReal = valorLiq - (pecaBase + freteBase + custoTotalGarantiaOS);
+
+      return {
+        ...item,
+        id_os: item.id_os,
+        numero_os: item.numero_os,
+        status_os: item.status_os || 'AGUARDANDO_AVALIACAO',
+        defeitoRelatado: item.defeito_relatado || '',
+        diagnostico: item.diagnostico_tecnico || '',
+        observacoes: item.observacoes_internas || '',
+        formaPagamento: item.forma_pagamento || 'PIX',
+        parcelas: Number(item.parcelas || 1),
+        valorLiquido: valorLiq,
+        possuiGarantia: item.possui_garantia ?? true,
+        dataAbertura: item.data_abertura || '',
+        cliente: {
+          nome: item.clientes?.nome || item.cliente_nome || 'Cliente Balcão',
+          whatsapp: item.clientes?.whatsapp || item.cliente_telefone || '',
+        },
+        aparelho: {
+          modelo: item.aparelhos_cliente?.modelo || item.aparelho_modelo || 'Smartphone',
+          imei1: item.aparelhos_cliente?.imei_1 || item.aparelho_imei || '',
+        },
+        orcamentoCalculado: {
+          subtotalServicos: Number(item.subtotal_servicos || valorBruto),
+          tipoDesconto: item.tipo_desconto || 'VALOR',
+          descontoGeralAplicado: Number(item.desconto_valor || 0),
+          valorTotalOrcamento: valorBruto,
+          lucroTotalEstimadoInterno: lucroLiquidoReal,
+          custoPeca: pecaBase,
+          freteReal: freteBase,
+          fornecedorPeca: item.fornecedor_peca || '',
+          custoPecaGarantia: custoTotalGarantiaOS,
+        },
+        checklistEntrada: item.checklist_entrada || {},
+        garantia: listaRetornos.length > 0 || custoTotalGarantiaOS > 0 ? {
+          listaRetornos,
+          custoTotalGarantia: custoTotalGarantiaOS,
+          custoPecaGarantia: custoTotalGarantiaOS,
+          totalVoltas: listaRetornos.length || 1
+        } : null,
+      };
+    });
   } catch (error) {
     console.error('Erro ao buscar ordens no Supabase:', error);
     return [];
@@ -300,9 +376,36 @@ export async function registrarGarantiaOS(
   garantia: any,
   _descricaoOcorrencia?: string
 ): Promise<void> {
+  const { data: osAtual, error: errBusca } = await supabase
+    .from('ordens_servico')
+    .select('garantia_json')
+    .eq('id_os', id_os)
+    .single();
+
+  if (errBusca) throw new Error('Falha ao localizar OS para registrar garantia.');
+
+  let listaRetornos: any[] = [];
+  let garantiaRaw = osAtual?.garantia_json;
+
+  if (typeof garantiaRaw === 'string') {
+    try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
+  }
+
+  if (Array.isArray(garantiaRaw)) {
+    listaRetornos = garantiaRaw;
+  } else if (garantiaRaw && typeof garantiaRaw === 'object') {
+    if (Array.isArray(garantiaRaw.listaRetornos)) {
+      listaRetornos = garantiaRaw.listaRetornos;
+    } else {
+      listaRetornos = [garantiaRaw];
+    }
+  }
+
+  listaRetornos.push(garantia);
+
   const { error } = await supabase
     .from('ordens_servico')
-    .update({ garantia_json: garantia })
+    .update({ garantia_json: listaRetornos })
     .eq('id_os', id_os);
 
   if (error) {

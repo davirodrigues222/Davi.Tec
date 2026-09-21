@@ -83,7 +83,11 @@ export const Relatorios: React.FC = () => {
     });
   }, [ordens, filtroPeriodo, dataInicio, dataFim]);
 
-  const faturamentoTotal = ordensFiltradas.reduce((acc, os: any) => {
+  const faturamentoBrutoTotal = ordensFiltradas.reduce((acc, os: any) => {
+    return acc + Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+  }, 0);
+
+  const faturamentoLiquidoTotal = ordensFiltradas.reduce((acc, os: any) => {
     const valorBruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
     const valorLiq = os.valorLiquido !== undefined && os.valorLiquido !== null && os.valorLiquido !== '' 
       ? Number(os.valorLiquido) 
@@ -91,23 +95,49 @@ export const Relatorios: React.FC = () => {
     return acc + valorLiq;
   }, 0);
   
-  const custosPecas = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.custoPeca || os.custoPeca || 0), 0);
-  const custosFrete = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.freteReal || os.freteReal || 0), 0);
+  const custosPecas = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0), 0);
+  const custosFrete = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0), 0);
   
-  const ordensComGarantia = ordensFiltradas.filter((os: any) => os.garantia?.houveGarantia);
-  const custosGarantia = ordensComGarantia.reduce((acc, os: any) => acc + Number(os.garantia?.custoPecaGarantia || os.garantia?.prejuizoTotalGarantia || 0), 0);
+  // CAPTURA UNIVERSAL E BLINDADA DE GARANTIAS (Lê de todas as estruturas possíveis)
+  const custosGarantias = ordensFiltradas.reduce((acc, os: any) => {
+    const valorGarantia = Number(
+      os.orcamentoCalculado?.custoPecaGarantia || 
+      os.garantia?.custoPecaGarantia || 
+      os.garantia?.custoTotalGarantia || 
+      os.custo_peca_garantia || 
+      0
+    );
+    return acc + valorGarantia;
+  }, 0);
 
-  const custosTotais = custosPecas + custosFrete + custosGarantia;
-  const lucroLiquidoReal = faturamentoTotal - custosTotais;
-  const ticketMedio = ordensFiltradas.length > 0 ? faturamentoTotal / ordensFiltradas.length : 0;
+  const ordensComGarantia = ordensFiltradas.filter((os: any) => {
+    const temGarantiaJson = os.possuiGarantiaRegistrada || os.garantia || os.garantia_json;
+    const temValorGarantia = Number(os.orcamentoCalculado?.custoPecaGarantia || os.garantia?.custoPecaGarantia || os.custo_peca_garantia || 0) > 0;
+    return temGarantiaJson || temValorGarantia;
+  });
+  
+  const totalVoltasGarantia = ordensFiltradas.reduce((acc, os: any) => {
+    return acc + Number(os.garantia?.totalVoltas || (os.garantia || os.custo_peca_garantia ? 1 : 0));
+  }, 0);
+
+  // Custos Operacionais somam obrigatoriamente Peças + Fretes + Garantias
+  const custosTotais = custosPecas + custosFrete + custosGarantias;
+
+  // LUCRO REAL LÍQUIDO = FATURAMENTO LÍQUIDO − CUSTOS TOTAIS
+  const lucroLiquidoReal = faturamentoLiquidoTotal - custosTotais;
+
+  const ticketMedio = ordensFiltradas.length > 0 ? faturamentoLiquidoTotal / ordensFiltradas.length : 0;
   
   const ordensComPrejuizo = ordensFiltradas.filter((os: any) => {
     const valorBruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
     const cobrado = os.valorLiquido !== undefined && os.valorLiquido !== null && os.valorLiquido !== '' 
       ? Number(os.valorLiquido) 
       : valorBruto;
-    const custoOs = Number(os.orcamentoCalculado?.custoPeca || 0) + Number(os.orcamentoCalculado?.freteReal || 0) + Number(os.garantia?.custoPecaGarantia || 0);
-    return (cobrado - custoOs) < 0;
+    const custoPecaOs = Number(os.orcamentoCalculado?.custoPeca || 0);
+    const custoFreteOs = Number(os.orcamentoCalculado?.freteReal || 0);
+    const custoGarantiaOs = Number(os.orcamentoCalculado?.custoPecaGarantia || 0);
+    const custoTotalOs = custoPecaOs + custoFreteOs + custoGarantiaOs;
+    return (cobrado - custoTotalOs) < 0;
   });
 
   if (loading) {
@@ -122,7 +152,6 @@ export const Relatorios: React.FC = () => {
   return (
     <div className="space-y-8 max-w-[1600px] mx-auto text-xs text-zinc-300 pb-12">
       
-      {/* 1. CABEÇALHO REFINADO COM BARRA DE FERRAMENTAS UNIFICADA */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
         <div>
           <span className="text-[11px] font-semibold text-zinc-500 tracking-wider uppercase">Davi.tec / Inteligência Financeira</span>
@@ -130,7 +159,6 @@ export const Relatorios: React.FC = () => {
           <p className="text-xs text-zinc-400 mt-1">Auditoria real de custos, lucros e faturamento líquido da assistência técnica.</p>
         </div>
 
-        {/* Toolbar de Filtros Globais Elegante */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 shadow-inner">
             <span className="text-zinc-500 mr-2 text-xs">📅</span>
@@ -150,24 +178,6 @@ export const Relatorios: React.FC = () => {
             </select>
           </div>
 
-          {filtroPeriodo === 'CUSTOM' && (
-            <div className="flex items-center space-x-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="bg-transparent text-xs text-white outline-none"
-              />
-              <span className="text-zinc-500">até</span>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="bg-transparent text-xs text-white outline-none"
-              />
-            </div>
-          )}
-
           <button
             onClick={carregarRelatorios}
             className="p-2.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-xs transition shadow-sm flex items-center justify-center"
@@ -178,66 +188,70 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. LINHA SUPERIOR DE CARDS (GRID ASSIMÉTRICO COM DESTAQUE PARA LUCRO LÍQUIDO) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         
-        {/* Card Faturamento */}
-        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Faturamento Líquido</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm">💰</div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Faturamento Bruto</span>
+            <div className="w-7 h-7 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xs">📊</div>
           </div>
-          <div className="mt-4">
-            <h3 className="text-2xl font-black text-white tracking-tight">R$ {faturamentoTotal.toFixed(2)}</h3>
-            <p className="text-[11px] text-zinc-500 mt-1 font-medium">Soma de {ordensFiltradas.length} OS(s) filtradas</p>
+          <div className="mt-3">
+            <h3 className="text-xl font-black text-white tracking-tight">R$ {faturamentoBrutoTotal.toFixed(2)}</h3>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-medium">Soma de {ordensFiltradas.length} OS(s)</p>
           </div>
         </div>
 
-        {/* Card Custos Operacionais */}
-        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Custos Operacionais</span>
-            <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-sm">📉</div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Faturamento Líquido</span>
+            <div className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-xs">💰</div>
           </div>
-          <div className="mt-4">
-            <h3 className="text-2xl font-black text-white tracking-tight">R$ {custosTotais.toFixed(2)}</h3>
-            <p className="text-[11px] text-zinc-500 mt-1 font-medium">Peças + Fretes + Garantias</p>
+          <div className="mt-3">
+            <h3 className="text-xl font-black text-white tracking-tight">R$ {faturamentoLiquidoTotal.toFixed(2)}</h3>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-medium">Com descontos aplicados</p>
           </div>
         </div>
 
-        {/* Card Principal de Destaque: Lucro Real Líquido (Surface Elevation) */}
-        <div className="bg-gradient-to-br from-emerald-950/40 via-zinc-900/90 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Custos Operacionais</span>
+            <div className="w-7 h-7 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-xs">📉</div>
+          </div>
+          <div className="mt-3">
+            <h3 className="text-xl font-black text-white tracking-tight">R$ {custosTotais.toFixed(2)}</h3>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-medium">Peças + Fretes + Garantias</p>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-950/40 via-zinc-900/90 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 shadow-2xl flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
           <div className="flex items-center justify-between relative z-10">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Lucro Real Líquido</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-sm">💎</div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Lucro Real Líquido</span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-xs">💎</div>
           </div>
-          <div className="mt-4 relative z-10">
-            <h3 className={`text-3xl font-black tracking-tight ${lucroLiquidoReal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          <div className="mt-3 relative z-10">
+            <h3 className={`text-2xl font-black tracking-tight ${lucroLiquidoReal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               R$ {lucroLiquidoReal.toFixed(2)}
             </h3>
-            <p className="text-[11px] text-zinc-400 mt-1 font-medium">Faturamento Líquido − Custos</p>
+            <p className="text-[10px] text-zinc-400 mt-0.5 font-medium">Faturamento − Custos</p>
           </div>
         </div>
 
-        {/* Card Ticket Médio */}
-        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/30 border border-zinc-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Ticket Médio</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm">📊</div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Ticket Médio</span>
+            <div className="w-7 h-7 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xs">📈</div>
           </div>
-          <div className="mt-4">
-            <h3 className="text-2xl font-black text-white tracking-tight">R$ {ticketMedio.toFixed(2)}</h3>
-            <p className="text-[11px] text-zinc-500 mt-1 font-medium">Média por atendimento</p>
+          <div className="mt-3">
+            <h3 className="text-xl font-black text-white tracking-tight">R$ {ticketMedio.toFixed(2)}</h3>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-medium">Média por atendimento</p>
           </div>
         </div>
 
       </div>
 
-      {/* 3. PAINÉIS DE ALERTA OPERACIONAL INTELIGENTES (SUBSTITUINDO CAIXAS VAZIAS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         
-        {/* Painel de Custos de Garantia */}
         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex items-center justify-between">
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
@@ -245,23 +259,22 @@ export const Relatorios: React.FC = () => {
               <h4 className="text-xs font-bold text-white uppercase tracking-wider">Custos de Garantia / Retorno</h4>
             </div>
             <p className="text-[11px] text-zinc-400">
-              Total de OS acionadas em garantia: <strong className="text-white">{ordensComGarantia.length}</strong>
+              Total de OS com retorno / Voltas registadas: <strong className="text-white">{ordensComGarantia.length} OS ({totalVoltasGarantia} voltas)</strong>
             </p>
           </div>
           <div className="text-right">
-            {ordensComGarantia.length === 0 ? (
+            {custosGarantias === 0 ? (
               <span className="inline-flex items-center px-3 py-1 rounded-xl text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 ✨ Zero Garantias
               </span>
             ) : (
               <span className="text-sm font-black text-rose-400">
-                R$ {custosGarantia.toFixed(2)}
+                R$ {custosGarantias.toFixed(2)}
               </span>
             )}
           </div>
         </div>
 
-        {/* Painel de Serviços com Prejuízo */}
         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex items-center justify-between">
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
@@ -269,7 +282,7 @@ export const Relatorios: React.FC = () => {
               <h4 className="text-xs font-bold text-white uppercase tracking-wider">Auditoria de Prejuízos</h4>
             </div>
             <p className="text-[11px] text-zinc-400">
-              Serviços onde o custo superou o valor cobrado.
+              Serviços onde o custo total superou o valor cobrado.
             </p>
           </div>
           <div className="text-right">

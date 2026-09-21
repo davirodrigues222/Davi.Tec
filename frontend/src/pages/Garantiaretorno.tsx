@@ -89,13 +89,15 @@ export const GarantiaRetorno: React.FC = () => {
           defeitoConstatadoGarantia: defeitoConstatado,
           pecaSubstituidaGarantia: pecaSubstituida,
           custoPecaGarantia: cPeca,
+          freteGarantia: cFrete, // INCLUÍDO CORRETAMENTE AQUI
+          freteRealGarantia: cFrete, // Garantia de compatibilidade
           cobertoPelaAssistência: true,
           prejuizoTotalGarantia: prejuizoTotal,
         },
         `Retorno em Garantia: ${defeitoConstatado} (Peça: ${pecaSubstituida || 'N/A'} | Custo Peça: R$ ${cPeca.toFixed(2)} | Frete: R$ ${cFrete.toFixed(2)})`
       );
 
-      alert('Retorno de garantia registrado com sucesso! O custo foi lançado e o lucro real recalculado.');
+      alert('Retorno de garantia registrado com sucesso! O custo total foi lançado e o lucro real recalculado.');
       setOsSelecionada(null);
       setDefeitoConstatado('');
       setPecaSubstituida('');

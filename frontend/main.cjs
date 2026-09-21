@@ -15,11 +15,18 @@ function createWindow() {
     }
   });
 
-  // Carrega os ficheiros compilados do React (pasta dist)
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
-  // Descomenta a linha abaixo se precisares de abrir o inspector de erros (DevTools)
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.on('will-print', (event) => {
+    // Permite disparar o comando de impressão a partir da janela nativa do Electron
+  });
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'p') {
+      mainWindow.webContents.print({ silent: false, printBackground: true });
+      event.preventDefault();
+    }
+  });
 }
 
 app.whenReady().then(() => {

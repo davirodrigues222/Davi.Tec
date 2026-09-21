@@ -11,12 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuração do Cliente Supabase para o Backend
 const supabaseUrl = process.env.SUPABASE_URL || 'https://mlgkdyeujcglwlfdirin.supabase.co';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_HGJD0kFeVf03Gm-4vft8uQ_b4R4Om9P';
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// ==================== ROTAS DE CADASTROS E SERVIÇOS ====================
 
 app.get("/v1/cadastros/servicos", async (_req: Request, res: Response) => {
   try {
@@ -64,8 +61,6 @@ app.post("/v1/cadastros/fornecedores", async (req: Request, res: Response) => {
   }
 });
 
-// ==================== ROTAS DE ORÇAMENTOS E CÁLCULO COM DESCONTO ====================
-
 app.post("/v1/orcamentos/calcular", async (req: Request, res: Response) => {
   try {
     const { itens, descontoGeral } = req.body;
@@ -90,7 +85,6 @@ app.post("/v1/orcamentos/calcular", async (req: Request, res: Response) => {
       }
     }
 
-    // Lógica robusta para suportar Desconto em Valor Fixo (R$) ou Percentual (%)
     const valorDescontoInformado = Number(descontoGeral?.valor) || 0;
     const tipoDesconto = descontoGeral?.tipo === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
 
@@ -122,64 +116,208 @@ app.post("/v1/orcamentos/calcular", async (req: Request, res: Response) => {
   }
 });
 
-// ==================== ROTAS DE ORDENS DE SERVIÇO ====================
-
-app.post("/v1/ordens-servico", async (req: Request, res: Response) => {
+app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) => {
   try {
+    const { id } = req.params;
+    const dadosGarantia = req.body;
+
+    const pecaGarantia = Number(dadosGarantia?.custoPecaGarantia || dadosGarantia?.custo_peca_garantia || 0);
+    const freteGarantia = Number(dadosGarantia?.freteGarantia || dadosGarantia?.frete_garantia || 0);
+    const totalRetorno = pecaGarantia + freteGarantia;
+
+    // 1. Busca a OS atual
+    const { data: osAtual, error: errBusca } = await supabase
+      .from("ordens_servico")
+      .select("garantia_json, custo_peca_garantia")
+      .eq("id_os", id)
+      .single();
+
+    if (errBusca) throw errBusca;
+
+    let listaGarantias: any[] = [];
+    let garantiaRaw = osAtual?.garantia_json;
+
+    if (typeof garantiaRaw === 'string') {
+      try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
+    }
+
+    if (Array.isArray(garantiaRaw)) {
+      listaGarantias = garantiaRaw;
+    } else if (garantiaRaw && typeof garantiaRaw === 'object' && garantiaRaw.listaRetornos) {
+      listaGarantias = garantiaRaw.listaRetornos;
+    } else if (garantiaRaw) {
+      listaGarantias = [garantiaRaw];
+    }
+
+    listaGarantias.push(dadosGarantia);
+
+    // Soma o acumulado de todas as garantias desta OS
+    let custoTotalGarantiaOS = 0;
+    listaGarantias.forEach((g: any) => {
+      const p = Number(g?.custoPecaGarantia ?? g?.custo_peca_garantia ?? 0);
+      const f = Number(g?.freteGarantia ?? g?.frete_garantia ?? 0);
+      custoTotalGarantiaOS += (p + f);
+    });
+
+    const objetoGarantiaSalvar = {
+      listaRetornos: listaGarantias,
+      custoTotalGarantia: custoTotalGarantiaOS,
+      custoPecaGarantia: custoTotalGarantiaOS,
+    };
+
+    // 2. Grava na base de dados atualizando o JSON e a coluna numérica direta (se existir)
+    const dadosUpdate: any = {
+      garantia_json: objetoGarantiaSalvar,
+      custo_peca_garantia: custoTotalGarantiaOS // Grava direto na coluna física para segurança total
+    };
+
+    const { data, error: errUpdate } = await supabase
+      .from("ordens_servico")
+      .update(dadosUpdate)
+      .eq("id_os", id)
+      .select();
+
+    if (errUpdate) throw errUpdate;
+
+    return res.json({ sucesso: true, mensagem: "Garantia registrada com sucesso!", data: data[0] });
+  } catch (err: any) {
+    console.error("Erro ao salvar garantia:", err.message);
+    return res.status(500).json({ sucesso: false, erro: err.message });
+  }
+});
+
+// Rota crucial para registrar garantia e abater no lucro líquido
+app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const dadosGarantia = req.body;
+
+    const { data: osAtual, error: errBusca } = await supabase
+      .from("ordens_servico")
+      .select("garantia_json")
+      .eq("id_os", id)
+      .single();
+
+    if (errBusca) throw errBusca;
+
+    let listaGarantias: any[] = [];
+    let garantiaRaw = osAtual?.garantia_json;
+
+    if (typeof garantiaRaw === 'string') {
+      try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
+    }
+
+    if (Array.isArray(garantiaRaw)) {
+      listaGarantias = garantiaRaw;
+    } else if (garantiaRaw && typeof garantiaRaw === 'object') {
+      if (Array.isArray(garantiaRaw.listaRetornos)) {
+        listaGarantias = garantiaRaw.listaRetornos;
+      } else {
+        listaGarantias = [garantiaRaw];
+      }
+    }
+
+    listaGarantias.push(dadosGarantia);
+
+    let custoTotalGarantiaOS = 0;
+    listaGarantias.forEach((g: any) => {
+      const peca = Number(g?.custoPecaGarantia ?? g?.custo_peca_garantia ?? g?.custoPeca ?? 0);
+      const frete = Number(g?.freteGarantia ?? g?.frete_garantia ?? g?.freteReal ?? 0);
+      custoTotalGarantiaOS += (peca + frete);
+    });
+
+    const objetoGarantiaSalvar = {
+      listaRetornos: listaGarantias,
+      custoTotalGarantia: custoTotalGarantiaOS,
+      custoPecaGarantia: custoTotalGarantiaOS,
+      totalVoltas: listaGarantias.length,
+      ultimaAtualizacao: new Date().toISOString()
+    };
+
+    const { data, error: errUpdate } = await supabase
+      .from("ordens_servico")
+      .update({
+        garantia_json: objetoGarantiaSalvar
+      })
+      .eq("id_os", id)
+      .select();
+
+    if (errUpdate) throw errUpdate;
+
+    return res.json({ sucesso: true, mensagem: "Garantia registrada com sucesso!", data: data[0] });
+  } catch (err: any) {
+    return res.status(500).json({ sucesso: false, erro: err.message });
+  }
+});
+
+app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
     const {
       cliente,
       aparelho,
+      status_os,
       defeitoRelatado,
-      orcamentoCalculado,
-      formaPagamento,
+      diagnostico,
+      servicoRealizado,
+      pecasUtilizadas,
+      observacoes,
+      forma_pagamento,
       parcelas,
-      valorLiquido,
+      valor_liquido,
+      dataAbertura,
+      data_conclusao,
+      checklistEntrada,
+      orcamentoCalculado,
     } = req.body;
 
-    if (!formaPagamento) {
-      return res.status(400).json({ sucesso: false, erro: "A forma de pagamento é obrigatória." });
-    }
-
-    const numeroOsGerado = `OS-${Date.now().toString().slice(-6)}`;
     const numPeca = Number(orcamentoCalculado?.custoPeca) || 0;
     const numFrete = Number(orcamentoCalculado?.freteReal) || 0;
+    const custoGarantiaPreservado = Number(orcamentoCalculado?.custoPecaGarantia || 0);
     const desconto = Number(orcamentoCalculado?.descontoGeralAplicado) || 0;
-    const tipoDesconto = orcamentoCalculado?.tipoDesconto || 'VALOR';
     const valorTotal = Number(orcamentoCalculado?.valorTotalOrcamento) || 0;
     const subtotal = Number(orcamentoCalculado?.subtotalServicos) || valorTotal;
+    const numValorLiquido = valor_liquido !== undefined && valor_liquido !== null ? Number(valor_liquido) : valorTotal;
     
-    const numValorLiquido = valorLiquido !== undefined && valorLiquido !== null 
-      ? Number(valorLiquido) 
-      : valorTotal;
-    const lucroReal = numValorLiquido - (numPeca + numFrete);
+    // Lucro real desconta peças, frete e também a garantia existente para não zerar ao editar
+    const lucroReal = numValorLiquido - (numPeca + numFrete + custoGarantiaPreservado);
 
-    const { data, error } = await supabase.from("ordens_servico").insert([
-      {
-        numero_os: numeroOsGerado,
-        cliente_nome: cliente?.nome || "Cliente não informado",
-        cliente_whatsapp: cliente?.whatsapp || "",
-        aparelho_modelo: aparelho?.modelo || "Não especificado",
-        defeito_relatado: defeitoRelatado || "Defeito não informado",
-        subtotal_servicos: subtotal,
-        tipo_desconto: tipoDesconto,
-        desconto_valor: desconto,
-        valor_total: valorTotal,
-        lucro_estimado_total: lucroReal,
-        custo_peca: numPeca,
-        frete_real: numFrete,
-        fornecedor_peca: orcamentoCalculado?.fornecedorPeca || null,
-        forma_pagamento: formaPagamento,
-        parcelas: Number(parcelas) || 1,
-        valor_liquido: numValorLiquido,
-      }
-    ]).select();
+    const dadosAtualizados: any = {
+      cliente_nome: cliente?.nome,
+      cliente_whatsapp: cliente?.whatsapp,
+      cliente_cpf_cnpj: cliente?.cpfCnpj,
+      aparelho_modelo: aparelho?.modelo,
+      status_os: status_os,
+      defeito_relatado: defeitoRelatado,
+      diagnostico_tecnico: diagnostico,
+      servico_realizado: servicoRealizado,
+      pecas_utilizadas: pecasUtilizadas,
+      observacoes_internas: observacoes,
+      forma_pagamento: forma_pagamento,
+      parcelas: Number(parcelas) || 1,
+      valor_liquido: numValorLiquido,
+      subtotal_servicos: subtotal,
+      desconto_valor: desconto,
+      valor_total: valorTotal,
+      lucro_estimado_total: lucroReal,
+      custo_peca: numPeca,
+      frete_real: numFrete,
+      fornecedor_peca: orcamentoCalculado?.fornecedorPeca || null,
+      checklist_entrada: checklistEntrada || null,
+    };
+
+    if (dataAbertura) dadosAtualizados.data_abertura = dataAbertura;
+    if (data_conclusao) dadosAtualizados.data_conclusao = data_conclusao;
+
+    const { data, error } = await supabase
+      .from("ordens_servico")
+      .update(dadosAtualizados)
+      .eq("id_os", id)
+      .select();
 
     if (error) throw error;
 
-    return res.status(201).json({
-      sucesso: true,
-      data: { idOs: data[0]?.id_os, numeroOs: numeroOsGerado },
-    });
+    return res.json({ sucesso: true, data: data[0] });
   } catch (err: any) {
     return res.status(500).json({ sucesso: false, erro: err.message });
   }
@@ -194,33 +332,98 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
 
     if (error) throw error;
 
-    const ordensFormatadas = data.map((row: any) => ({
-      id_os: row.id_os,
-      numero_os: row.numero_os,
-      status_os: row.status_os || "AGUARDANDO_AVALIACAO",
-      defeitoRelatado: row.defeito_relatado || "",
-      data_abertura: row.data_abertura,
-      formaPagamento: row.forma_pagamento || "PIX",
-      parcelas: Number(row.parcelas || 1),
-      valorLiquido: Number(row.valor_liquido || row.valor_total),
-      cliente: {
-        nome: row.cliente_nome || "Cliente",
-        whatsapp: row.cliente_whatsapp || "",
-      },
-      aparelho: {
-        modelo: row.aparelho_modelo || "Não especificado",
-      },
-      orcamentoCalculado: {
-        subtotalServicos: Number(row.subtotal_servicos || 0),
-        tipoDesconto: row.tipo_desconto || 'VALOR',
-        descontoGeralAplicado: Number(row.desconto_valor || 0),
-        valorTotalOrcamento: Number(row.valor_total || 0),
-        lucroTotalEstimadoInterno: Number(row.lucro_estimado_total || 0),
-        custoPeca: Number(row.custo_peca || 0),
-        frete_real: Number(row.frete_real || 0),
-        fornecedorPeca: row.fornecedor_peca || "",
-      },
-    }));
+    const ordensFormatadas = data.map((row: any) => {
+      let garantiaRaw = row.garantia_json;
+      if (typeof garantiaRaw === 'string') {
+        try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
+      }
+
+      let garantiaList: any[] = [];
+      if (Array.isArray(garantiaRaw)) {
+        garantiaList = garantiaRaw;
+      } else if (garantiaRaw && typeof garantiaRaw === 'object') {
+        if (Array.isArray(garantiaRaw.listaRetornos)) {
+          garantiaList = garantiaRaw.listaRetornos;
+        } else {
+          garantiaList = [garantiaRaw];
+        }
+      }
+
+      // SOMA ROBUSTA DE QUALQUER CAMPO DE CUSTO NO JSON OU COLUNA
+      let totalGarantiaOS = Number(row.custo_peca_garantia || 0);
+
+      garantiaList.forEach((g: any) => {
+        const peca = Number(
+          g?.custoPecaGarantia ?? 
+          g?.custo_peca_garantia ?? 
+          g?.custoPeca ?? 
+          g?.custo ?? 
+          g?.valor ?? 
+          0
+        );
+        const frete = Number(
+          g?.freteGarantia ?? 
+          g?.frete_garantia ?? 
+          g?.freteReal ?? 
+          g?.frete ?? 
+          0
+        );
+        totalGarantiaOS += (peca + frete);
+      });
+
+      const valorBruto = Number(row.valor_total || 0);
+      const valorLiq = Number(row.valor_liquido || valorBruto);
+      const pecaBase = Number(row.custo_peca || 0);
+      const freteBase = Number(row.frete_real || 0);
+
+      // LUCRO REAL LÍQUIDO = VALOR LÍQUIDO - (PEÇA + FRETE + GARANTIA)
+      const lucroLiquidoReal = valorLiq - (pecaBase + freteBase + totalGarantiaOS);
+
+      return {
+        id_os: row.id_os,
+        numero_os: row.numero_os,
+        status_os: row.status_os || "AGUARDANDO_AVALIACAO",
+        defeitoRelatado: row.defeito_relatado || "",
+        diagnostico: row.diagnostico_tecnico || "",
+        servicoRealizado: row.servico_realizado || "",
+        pecasUtilizadas: row.pecas_utilizadas || "",
+        observacoes: row.observacoes_internas || "",
+        data_abertura: row.data_abertura,
+        data_conclusao: row.data_conclusao,
+        formaPagamento: row.forma_pagamento || "PIX",
+        parcelas: Number(row.parcelas || 1),
+        valorLiquido: valorLiq,
+        checklistEntrada: row.checklist_entrada || {},
+        garantia: garantiaList.length > 0 || totalGarantiaOS > 0 ? {
+          listaRetornos: garantiaList,
+          custoTotalGarantia: totalGarantiaOS,
+          custoPecaGarantia: totalGarantiaOS,
+          totalVoltas: garantiaList.length || 1
+        } : null,
+        possuiGarantiaRegistrada: garantiaList.length > 0 || totalGarantiaOS > 0,
+        cliente: {
+          nome: row.cliente_nome || "Cliente",
+          whatsapp: row.cliente_whatsapp || "",
+          cpfCnpj: row.cliente_cpf_cnpj || "",
+        },
+        aparelho: {
+          modelo: row.aparelho_modelo || "Não especificado",
+          imei1: "",
+          senhaDesbloqueio: "",
+        },
+        orcamentoCalculado: {
+          subtotalServicos: Number(row.subtotal_servicos || valorBruto),
+          tipoDesconto: row.tipo_desconto || 'VALOR',
+          descontoGeralAplicado: Number(row.desconto_valor || 0),
+          valorTotalOrcamento: valorBruto,
+          lucroTotalEstimadoInterno: lucroLiquidoReal,
+          custoPeca: pecaBase,
+          freteReal: freteBase,
+          fornecedorPeca: row.fornecedor_peca || "",
+          custoPecaGarantia: totalGarantiaOS,
+        },
+      };
+    });
 
     return res.json({ sucesso: true, data: ordensFormatadas });
   } catch (err: any) {
