@@ -58,10 +58,12 @@ export const HistoricoServicos: React.FC = () => {
   const [excluindo, setExcluindo] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [abaModal, setAbaModal] = useState<'detalhes' | 'checklist' | 'historico'>('detalhes');
+  const [abaEdicao, setAbaEdicao] = useState<'geral' | 'financeiro' | 'checklist'>('geral');
 
-  // Estados do Formulário de Edição
+  // Estados do Formulário de Edição Completo
   const [editNome, setEditNome] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editCpfCnpj, setEditCpfCnpj] = useState('');
   const [editModelo, setEditModelo] = useState('');
   const [editImei, setEditImei] = useState('');
   const [editSenha, setEditSenha] = useState('');
@@ -77,13 +79,13 @@ export const HistoricoServicos: React.FC = () => {
   const [editDesconto, setEditDesconto] = useState<number | ''>('');
   const [editValorTotal, setEditValorTotal] = useState<number | ''>('');
   
-  // Novos Estados Financeiros de Edição
   const [editFormaPagamento, setEditFormaPagamento] = useState('PIX');
   const [editParcelas, setEditParcelas] = useState<number>(1);
   const [editValorLiquido, setEditValorLiquido] = useState<number | ''>('');
 
   const [editDataAbertura, setEditDataAbertura] = useState('');
   const [editDataConclusao, setEditDataConclusao] = useState('');
+  const [editChecklist, setEditChecklist] = useState<Record<string, string>>({});
 
   const carregarHistorico = async () => {
     setLoading(true);
@@ -117,6 +119,7 @@ export const HistoricoServicos: React.FC = () => {
     setOsParaEditar(os);
     setEditNome(os.cliente?.nome || '');
     setEditWhatsapp(os.cliente?.whatsapp || '');
+    setEditCpfCnpj(os.cliente?.cpfCnpj || '');
     setEditModelo(os.aparelho?.modelo || '');
     setEditImei(os.aparelho?.imei1 || '');
     setEditSenha(os.aparelho?.senhaDesbloqueio || '');
@@ -151,6 +154,9 @@ export const HistoricoServicos: React.FC = () => {
     setEditDataConclusao(
       os.data_conclusao ? new Date(os.data_conclusao).toISOString().substring(0, 10) : ''
     );
+
+    setEditChecklist(os.checklistEntrada || {});
+    setAbaEdicao('geral');
   };
 
   const handleSalvarEdicao = async () => {
@@ -177,9 +183,9 @@ export const HistoricoServicos: React.FC = () => {
       const custoGarantia = Number(osParaEditar.garantia?.custoPecaGarantia || osParaEditar.garantia?.prejuizoTotalGarantia || 0);
       const lucroCalculado = numValorLiquidoFinal - (numCustoPeca + numFrete + custoGarantia);
 
-      await editarOrdemServico(osParaEditar.id_os, {
-        cliente: { ...osParaEditar.cliente, nome: editNome, whatsapp: editWhatsapp },
-        aparelho: { modelo: editModelo, imei1: editImei, senhaDesbloqueio: editSenha },
+await editarOrdemServico(osParaEditar.id_os, {
+        cliente: { ...osParaEditar.cliente, nome: editNome, whatsapp: editWhatsapp, cpfCnpj: editCpfCnpj },
+        aparelho: { ...osParaEditar.aparelho, modelo: editModelo, imei1: editImei, senhaDesbloqueio: editSenha },
         status_os: editStatus,
         defeitoRelatado: editDefeito,
         diagnostico: editDiagnostico,
@@ -191,6 +197,7 @@ export const HistoricoServicos: React.FC = () => {
         valor_liquido: numValorLiquidoFinal,
         dataAbertura: editDataAbertura || undefined,
         data_conclusao: editDataConclusao || undefined,
+        checklistEntrada: editChecklist,
         orcamentoCalculado: {
           subtotalServicos: numValorTotal + numDesconto,
           descontoGeralAplicado: numDesconto,
@@ -205,7 +212,30 @@ export const HistoricoServicos: React.FC = () => {
 
       setOsParaEditar(null);
       if (osSelecionada?.id_os === osParaEditar.id_os) {
-        setOsSelecionada(null);
+        setOsSelecionada({
+          ...osSelecionada,
+          cliente: { ...osSelecionada.cliente, nome: editNome, whatsapp: editWhatsapp, cpfCnpj: editCpfCnpj },
+          aparelho: { ...osSelecionada.aparelho, modelo: editModelo, imei1: editImei, senhaDesbloqueio: editSenha },
+          status_os: editStatus,
+          defeitoRelatado: editDefeito,
+          diagnostico: editDiagnostico,
+          servicoRealizado: editServico,
+          pecasUtilizadas: editPecas,
+          observacoes: editObservacoes,
+          checklistEntrada: editChecklist,
+          orcamentoCalculado: {
+            ...osSelecionada.orcamentoCalculado,
+            valorTotalOrcamento: numValorTotal,
+            custoPeca: numCustoPeca,
+            freteReal: numFrete,
+            fornecedorPeca: editFornecedor,
+          },
+          ...({
+            formaPagamento: editFormaPagamento,
+            parcelas: editParcelas,
+            valorLiquido: numValorLiquidoFinal
+          } as any)
+        });
       }
       await carregarHistorico();
     } catch (err: any) {
@@ -449,12 +479,14 @@ export const HistoricoServicos: React.FC = () => {
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">👤 Informações do Cliente</span>
                       <p className="font-bold text-white text-sm">{osSelecionada.cliente?.nome}</p>
                       <p className="text-zinc-400"><strong>WhatsApp:</strong> {osSelecionada.cliente?.whatsapp || 'Não informado'}</p>
+                      <p className="text-zinc-400"><strong>CPF/CNPJ:</strong> {osSelecionada.cliente?.cpfCnpj || 'Não informado'}</p>
                     </div>
 
                     <div className="space-y-1 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-4">
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">📱 Informações do Aparelho</span>
                       <p className="font-bold text-white text-sm">{osSelecionada.aparelho?.modelo}</p>
                       <p className="text-zinc-400"><strong>IMEI / N° Série:</strong> {osSelecionada.aparelho?.imei1 || 'Não informado'}</p>
+                      <p className="text-zinc-400"><strong>Senha:</strong> {osSelecionada.aparelho?.senhaDesbloqueio || 'Não informada'}</p>
                     </div>
                   </div>
 
@@ -463,6 +495,30 @@ export const HistoricoServicos: React.FC = () => {
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">Defeito Relatado pelo Cliente</span>
                       <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.defeitoRelatado}</p>
                     </div>
+                    {osSelecionada.diagnostico && (
+                      <div>
+                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Diagnóstico Técnico</span>
+                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.diagnostico}</p>
+                      </div>
+                    )}
+                    {osSelecionada.servicoRealizado && (
+                      <div>
+                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Serviço Realizado</span>
+                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.servicoRealizado}</p>
+                      </div>
+                    )}
+                    {osSelecionada.pecasUtilizadas && (
+                      <div>
+                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Peças Utilizadas</span>
+                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.pecasUtilizadas}</p>
+                      </div>
+                    )}
+                    {osSelecionada.observacoes && (
+                      <div>
+                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">Observações Internas</span>
+                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">{osSelecionada.observacoes}</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -527,10 +583,10 @@ export const HistoricoServicos: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL EDIÇÃO COMPLETO COM DATA DE ABERTURA E CAMPOS FINANCEIROS */}
+      {/* MODAL EDIÇÃO COMPLETO COM TODAS AS ABAS E CAMPOS DA NOVA OS */}
       {osParaEditar && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
             <div className="p-4 bg-zinc-950 border-b border-zinc-800 flex justify-between items-center">
               <h3 className="text-sm font-bold text-white">
                 Editar Ordem de Serviço <span className="text-blue-400 font-mono">#{osParaEditar.numero_os}</span>
@@ -538,190 +594,313 @@ export const HistoricoServicos: React.FC = () => {
               <button onClick={() => setOsParaEditar(null)} className="text-zinc-400 hover:text-white text-xs font-bold">✕</button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-zinc-400 block mb-1">Nome do Cliente</label>
-                  <input
-                    type="text"
-                    value={editNome}
-                    onChange={(e) => setEditNome(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={editWhatsapp}
-                    onChange={(e) => setEditWhatsapp(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
+            <div className="flex border-b border-zinc-800 bg-zinc-950/50 text-xs">
+              <button
+                onClick={() => setAbaEdicao('geral')}
+                className={`px-4 py-2.5 font-bold transition border-b-2 ${
+                  abaEdicao === 'geral' ? 'border-blue-500 text-blue-400 bg-zinc-900/50' : 'border-transparent text-zinc-400'
+                }`}
+              >
+                1. Dados Gerais & Aparelho
+              </button>
+              <button
+                onClick={() => setAbaEdicao('financeiro')}
+                className={`px-4 py-2.5 font-bold transition border-b-2 ${
+                  abaEdicao === 'financeiro' ? 'border-blue-500 text-blue-400 bg-zinc-900/50' : 'border-transparent text-zinc-400'
+                }`}
+              >
+                2. Orçamento, Custos & Pagamento
+              </button>
+              <button
+                onClick={() => setAbaEdicao('checklist')}
+                className={`px-4 py-2.5 font-bold transition border-b-2 ${
+                  abaEdicao === 'checklist' ? 'border-blue-500 text-blue-400 bg-zinc-900/50' : 'border-transparent text-zinc-400'
+                }`}
+              >
+                3. Checklist de Entrada
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-zinc-400 block mb-1">Modelo Aparelho</label>
-                  <input
-                    type="text"
-                    value={editModelo}
-                    onChange={(e) => setEditModelo(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">IMEI</label>
-                  <input
-                    type="text"
-                    value={editImei}
-                    onChange={(e) => setEditImei(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">Status OS</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as StatusOS)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500 font-bold"
-                  >
-                    <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
-                    <option value="EM_ANALISE">Em Análise</option>
-                    <option value="AGUARDANDO_PECA">Aguardando Peça</option>
-                    <option value="EM_MANUTENCAO">Em Manutenção</option>
-                    <option value="PRONTO">Pronto / Retirada</option>
-                    <option value="ENTREGUE">Entregue / Concluído</option>
-                    <option value="CANCELADO">Cancelado</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* CAMPO DE EDIÇÃO DA DATA DE ABERTURA */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-zinc-400 block mb-1 font-bold text-blue-400">Data de Abertura da OS</label>
-                  <input
-                    type="date"
-                    value={editDataAbertura}
-                    onChange={(e) => setEditDataAbertura(e.target.value)}
-                    className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-white font-bold outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-zinc-400 block mb-1">Defeito Relatado</label>
-                <textarea
-                  rows={2}
-                  value={editDefeito}
-                  onChange={(e) => setEditDefeito(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-zinc-800">
-                <div>
-                  <label className="text-zinc-400 block mb-1 font-bold text-amber-400">Forma de Pagto</label>
-                  <select
-                    value={editFormaPagamento}
-                    onChange={(e) => {
-                      setEditFormaPagamento(e.target.value);
-                      if (e.target.value !== "Cartão de Crédito") {
-                        setEditParcelas(1);
-                        setEditValorLiquido("");
-                      }
-                    }}
-                    className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
-                  >
-                    <option value="PIX">PIX</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Cartão de Débito">Cartão de Débito</option>
-                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                  </select>
-                </div>
-
-                {editFormaPagamento === "Cartão de Crédito" && (
-                  <div>
-                    <label className="text-zinc-400 block mb-1 font-bold text-blue-400">Parcelas</label>
-                    <select
-                      value={editParcelas}
-                      onChange={(e) => {
-                        const p = Number(e.target.value);
-                        setEditParcelas(p);
-                        if (p > 3) setEditValorLiquido("");
-                      }}
-                      className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
-                        <option key={num} value={num}>
-                          {num}x {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
-                        </option>
-                      ))}
-                    </select>
+            <div className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
+              {abaEdicao === 'geral' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Nome do Cliente</label>
+                      <input
+                        type="text"
+                        value={editNome}
+                        onChange={(e) => setEditNome(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">WhatsApp</label>
+                      <input
+                        type="text"
+                        value={editWhatsapp}
+                        onChange={(e) => setEditWhatsapp(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">CPF / CNPJ</label>
+                      <input
+                        type="text"
+                        value={editCpfCnpj}
+                        onChange={(e) => setEditCpfCnpj(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
-                )}
 
-                {editFormaPagamento === "Cartão de Crédito" && editParcelas <= 3 && (
-                  <div>
-                    <label className="text-zinc-400 block mb-1 font-bold text-purple-400">Valor Líquido (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ex: 29.10"
-                      value={editValorLiquido}
-                      onChange={(e) => setEditValorLiquido(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full bg-zinc-950 border border-purple-500/50 rounded-lg p-2.5 text-purple-400 font-bold outline-none"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Modelo Aparelho</label>
+                      <input
+                        type="text"
+                        value={editModelo}
+                        onChange={(e) => setEditModelo(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">IMEI / N° Série</label>
+                      <input
+                        type="text"
+                        value={editImei}
+                        onChange={(e) => setEditImei(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Senha de Desbloqueio</label>
+                      <input
+                        type="text"
+                        value={editSenha}
+                        onChange={(e) => setEditSenha(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
-                )}
 
-                <div>
-                  <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">Valor Cobrado Total (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={editValorTotal}
-                    onChange={(e) => setEditValorTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-emerald-500/50 rounded-lg p-2.5 text-emerald-400 font-bold outline-none"
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-zinc-400 block mb-1 font-bold text-blue-400">Data de Abertura da OS</label>
+                      <input
+                        type="date"
+                        value={editDataAbertura}
+                        onChange={(e) => setEditDataAbertura(e.target.value)}
+                        className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-white font-bold outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1 font-bold text-zinc-300">Status da OS</label>
+                      <select
+                        value={editStatus}
+                        onChange={(e) => setEditStatus(e.target.value as StatusOS)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500 font-bold"
+                      >
+                        <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
+                        <option value="EM_ANALISE">Em Análise</option>
+                        <option value="AGUARDANDO_PECA">Aguardando Peça</option>
+                        <option value="EM_MANUTENCAO">Em Manutenção</option>
+                        <option value="PRONTO">Pronto / Retirada</option>
+                        <option value="ENTREGUE">Entregue / Concluído</option>
+                        <option value="CANCELADO">Cancelado</option>
+                      </select>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-                <div>
-                  <label className="text-zinc-400 block mb-1">Custo Peça (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={editCustoPeca}
-                    onChange={(e) => setEditCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Defeito Relatado</label>
+                      <textarea
+                        rows={2}
+                        value={editDefeito}
+                        onChange={(e) => setEditDefeito(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Diagnóstico Técnico</label>
+                      <textarea
+                        rows={2}
+                        value={editDiagnostico}
+                        onChange={(e) => setEditDiagnostico(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Serviço Realizado</label>
+                      <input
+                        type="text"
+                        value={editServico}
+                        onChange={(e) => setEditServico(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Peças Utilizadas</label>
+                      <input
+                        type="text"
+                        value={editPecas}
+                        onChange={(e) => setEditPecas(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Observações Internas</label>
+                      <input
+                        type="text"
+                        value={editObservacoes}
+                        onChange={(e) => setEditObservacoes(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">Frete Real (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={editFrete}
-                    onChange={(e) => setEditFrete(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
+              )}
+
+              {abaEdicao === 'financeiro' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-zinc-400 block mb-1 font-bold text-amber-400">Forma de Pagto</label>
+                      <select
+                        value={editFormaPagamento}
+                        onChange={(e) => {
+                          setEditFormaPagamento(e.target.value);
+                          if (e.target.value !== "Cartão de Crédito") {
+                            setEditParcelas(1);
+                            setEditValorLiquido("");
+                          }
+                        }}
+                        className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
+                      >
+                        <option value="PIX">PIX</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                      </select>
+                    </div>
+
+                    {editFormaPagamento === "Cartão de Crédito" && (
+                      <div>
+                        <label className="text-zinc-400 block mb-1 font-bold text-blue-400">Parcelas</label>
+                        <select
+                          value={editParcelas}
+                          onChange={(e) => {
+                            const p = Number(e.target.value);
+                            setEditParcelas(p);
+                            if (p > 3) setEditValorLiquido("");
+                          }}
+                          className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
+                            <option key={num} value={num}>
+                              {num}x {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {editFormaPagamento === "Cartão de Crédito" && editParcelas <= 3 && (
+                      <div>
+                        <label className="text-zinc-400 block mb-1 font-bold text-purple-400">Valor Líquido (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Ex: 29.10"
+                          value={editValorLiquido}
+                          onChange={(e) => setEditValorLiquido(e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-full bg-zinc-950 border border-purple-500/50 rounded-lg p-2.5 text-purple-400 font-bold outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">Valor Cobrado Total (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={editValorTotal}
+                        onChange={(e) => setEditValorTotal(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-zinc-950 border border-emerald-500/50 rounded-lg p-2.5 text-emerald-400 font-bold outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-2">
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Custo Peça (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={editCustoPeca}
+                        onChange={(e) => setEditCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Frete Real (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={editFrete}
+                        onChange={(e) => setEditFrete(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Desconto Aplicado (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={editDesconto}
+                        onChange={(e) => setEditDesconto(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 block mb-1">Fornecedor da Peça</label>
+                      <input
+                        type="text"
+                        value={editFornecedor}
+                        onChange={(e) => setEditFornecedor(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">Fornecedor</label>
-                  <input
-                    type="text"
-                    value={editFornecedor}
-                    onChange={(e) => setEditFornecedor(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
-                  />
+              )}
+
+              {abaEdicao === 'checklist' && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {['ligando', 'touchScreen', 'display', 'cameraTraseira', 'cameraFrontal', 'microfone', 'altoFalante', 'conectoresCarga', 'bateria', 'wiFi', 'bluetooth', 'botoesLaterais'].map((item) => (
+                    <div key={item} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1.5">
+                      <span className="capitalize font-medium text-zinc-300 block text-[11px]">{item.replace(/([A-Z])/g, " $1")}</span>
+                      <select
+                        value={editChecklist[item] || 'OK'}
+                        onChange={(e) => setEditChecklist({ ...editChecklist, [item]: e.target.value })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-1.5 text-white text-xs outline-none font-bold"
+                      >
+                        <option value="OK">OK</option>
+                        <option value="DEFEITO">Defeito</option>
+                        <option value="NAO_TESTADO">Não Testado</option>
+                      </select>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="p-4 bg-zinc-950 border-t border-zinc-800 flex justify-end space-x-2">
@@ -823,7 +1002,9 @@ export const HistoricoServicos: React.FC = () => {
           <div className="border border-slate-300 rounded-lg p-3 mb-4 bg-slate-50/50">
             <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-1 mb-1.5 text-xs">📋 Relato & Diagnóstico Técnico</h3>
             <p className="mb-1"><strong>Defeito Relatado:</strong> {osParaImprimir.defeitoRelatado || "Sem descrição"}</p>
-            {osParaImprimir.diagnostico && <p><strong>Diagnóstico Técnico:</strong> {osParaImprimir.diagnostico}</p>}
+            {osParaImprimir.diagnostico && <p className="mb-1"><strong>Diagnóstico Técnico:</strong> {osParaImprimir.diagnostico}</p>}
+            {osParaImprimir.servicoRealizado && <p className="mb-1"><strong>Serviço Realizado:</strong> {osParaImprimir.servicoRealizado}</p>}
+            {osParaImprimir.pecasUtilizadas && <p><strong>Peças Utilizadas:</strong> {osParaImprimir.pecasUtilizadas}</p>}
           </div>
 
           {/* VALORES E PAGAMENTO */}
