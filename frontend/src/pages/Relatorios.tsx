@@ -6,8 +6,8 @@ export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS');
-  const [dataInicio, setDataInicio] = useState<string>('');
-  const [dataFim, setDataFim] = useState<string>('');
+  const [dataInicio] = useState<string>('');
+  const [dataFim] = useState<string>('');
 
   const carregarRelatorios = async () => {
     setLoading(true);

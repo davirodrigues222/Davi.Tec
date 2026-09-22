@@ -138,7 +138,7 @@ export const HistoricoServicos: React.FC = () => {
     setOsParaImprimir(os);
     setTimeout(() => {
       window.print();
-    }, 200);
+    }, 300);
   };
 
   const abrirEdicao = (os: any) => {

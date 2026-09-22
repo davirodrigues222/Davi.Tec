@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 function createWindow() {
@@ -12,20 +12,27 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      backgroundThrottling: false,
     }
   });
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
-  mainWindow.webContents.on('will-print', (event) => {
-    // Permite disparar o comando de impressão a partir da janela nativa do Electron
-  });
-
+  // Intercepta o evento de atalho Ctrl+P ou chamadas de impressão
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.key.toLowerCase() === 'p') {
-      mainWindow.webContents.print({ silent: false, printBackground: true });
+      mainWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
+        if (!success) console.log('Erro na impressão: ', failureReason);
+      });
       event.preventDefault();
     }
+  });
+
+  // Listener IPC caso queiras disparar impressão diretamente de botões no React
+  ipcMain.handle('print-to-pdf-or-printer', async (event) => {
+    mainWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
+      if (!success) console.log('Falha ao imprimir: ', failureReason);
+    });
   });
 }
 
