@@ -32,3 +32,6 @@ release/
 frontend/dist_app/
 dist_app/
 *.exe
+
+dist/
+dist_electron/

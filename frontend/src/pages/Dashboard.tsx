@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { buscarOrdensServico } from '../services/api';
-import { StatusBadge } from '../components/StatusBadge';
-import type { OrdemServico } from '../types';
+import type { OrdemServico, StatusOS } from '../types';
 
-export const Dashboard: React.FC = () => {
+interface Props {
+  onNavigate?: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  session?: any;
+}
+
+export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [termoBusca, setTermoBusca] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [horaAtual, setHoraAtual] = useState('');
 
   const carregarOrdens = async () => {
     setLoading(true);
@@ -24,166 +27,478 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     carregarOrdens();
+
+    const agora = new Date();
+    setHoraAtual(
+      agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    );
   }, []);
 
   const listaOrdens = Array.isArray(ordens) ? ordens : [];
 
-  const osNaBancada = listaOrdens.filter((os) =>
-    ['AGUARDANDO_AVALIACAO', 'EM_ANALISE', 'EM_MANUTENCAO'].includes(os?.status_os)
-  ).length;
+  // Primeiro nome para a saudação
+  const primeiroNome = useMemo(() => {
+    const nomeCompleto =
+      session?.user?.user_metadata?.nome_responsavel ||
+      localStorage.getItem('sig_apple_configs')
+        ? JSON.parse(localStorage.getItem('sig_apple_configs') || '{}').nomeLoja
+        : 'Davi';
+    return (nomeCompleto || 'Davi').split(' ')[0];
+  }, [session]);
 
-  // CÁLCULOS FINANCEIROS TRANSPARENTES ORIGINAIS
-  // CÁLCULOS FINANCEIROS BLINDADOS COM GARANTIA
-  const faturamentoBruto = listaOrdens.reduce(
-    (acc, os: any) => acc + Number(os?.orcamentoCalculado?.valorTotalOrcamento || os?.valor_total || 0),
-    0
+  // Saudação com base na hora
+  const saudacao = useMemo(() => {
+    const hora = new Date().getHours();
+    if (hora >= 5 && hora < 12) return 'Bom dia';
+    if (hora >= 12 && hora < 18) return 'Boa tarde';
+    return 'Boa noite';
+  }, []);
+
+  // Data por extenso (ex: 18 de outubro de 2026)
+  const dataHojeExtenso = useMemo(() => {
+    return new Date().toLocaleDateString('pt-BR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, []);
+
+  // CÁLCULOS DOS 4 CARDS
+  // 1. Na bancada
+  const ordensNaBancada = useMemo(
+    () =>
+      listaOrdens.filter((os) =>
+        ['AGUARDANDO_AVALIACAO', 'EM_ANALISE', 'EM_MANUTENCAO'].includes(os.status_os)
+      ),
+    [listaOrdens]
   );
 
-  const custosTotais = listaOrdens.reduce((acc, os: any) => {
-    const peca = Number(os?.orcamentoCalculado?.custoPeca || os?.custo_peca || 0);
-    const frete = Number(os?.orcamentoCalculado?.freteReal || os?.frete_real || 0);
-    
-    // Captura universal de garantia em qualquer formato possível
-    const custoGarantia = Number(
-      os?.orcamentoCalculado?.custoPecaGarantia || 
-      os?.garantia?.custoPecaGarantia || 
-      os?.garantia?.custoTotalGarantia || 
-      os?.custo_peca_garantia ||
+  const aguardamDiagnostico = useMemo(
+    () =>
+      listaOrdens.filter((os) =>
+        ['AGUARDANDO_AVALIACAO', 'EM_ANALISE'].includes(os.status_os)
+      ).length,
+    [listaOrdens]
+  );
+
+  // 2. Prontos para retirada
+  const ordensProntas = useMemo(
+    () => listaOrdens.filter((os) => os.status_os === 'PRONTO'),
+    [listaOrdens]
+  );
+
+const valorTotalProntos = useMemo(
+  () =>
+    ordensProntas.reduce(
+      (acc, os) =>
+        acc + Number(os.orcamentoCalculado?.valorTotalOrcamento || 0),
       0
-    );
+    ),
+  [ordensProntas]
+);
 
-    return acc + peca + frete + custoGarantia;
-  }, 0);
+  // 3. Aguardando Peça
+  const ordensAguardandoPeca = useMemo(
+    () => listaOrdens.filter((os) => os.status_os === 'AGUARDANDO_PECA'),
+    [listaOrdens]
+  );
 
-  const faturamentoLiquidoTotal = listaOrdens.reduce((acc, os: any) => {
-    return acc + Number(os?.valorLiquido || os?.orcamentoCalculado?.valorTotalOrcamento || os?.valor_total || 0);
-  }, 0);
+  // 4. Faturamento do Mês e Lucro Real
+  const faturamentoMes = useMemo(
+    () =>
+      listaOrdens.reduce(
+        (acc, os: any) =>
+          acc + Number(os?.orcamentoCalculado?.valorTotalOrcamento || os?.valor_total || 0),
+        0
+      ),
+    [listaOrdens]
+  );
 
-  const lucroLiquidoReal = faturamentoLiquidoTotal - custosTotais;
-  const aparelhosProntos = listaOrdens.filter((os) => os?.status_os === 'PRONTO').length;
+  const custosTotais = useMemo(
+    () =>
+      listaOrdens.reduce((acc, os: any) => {
+        const peca = Number(os?.orcamentoCalculado?.custoPeca || os?.custo_peca || 0);
+        const frete = Number(os?.orcamentoCalculado?.freteReal || os?.frete_real || 0);
+        const garantia = Number(
+          os?.orcamentoCalculado?.custoPecaGarantia ||
+            os?.garantia?.custoPecaGarantia ||
+            os?.custo_peca_garantia ||
+            0
+        );
+        return acc + peca + frete + garantia;
+      }, 0),
+    [listaOrdens]
+  );
 
-  const ordensFiltradas = listaOrdens.filter((os) => {
-    if (!os) return false;
-    const termo = termoBusca.toLowerCase();
-    const numeroOs = os.numero_os ? os.numero_os.toLowerCase() : '';
-    const nomeCliente = os.cliente?.nome ? os.cliente.nome.toLowerCase() : '';
-    const modeloAparelho = os.aparelho?.modelo ? os.aparelho.modelo.toLowerCase() : '';
+  const lucroLiquidoReal = faturamentoMes - custosTotais;
 
-    const bateBusca = numeroOs.includes(termo) || nomeCliente.includes(termo) || modeloAparelho.includes(termo);
-    const bateStatus = filtroStatus === 'TODOS' || os.status_os === filtroStatus;
-    return bateBusca && bateStatus;
-  });
+  // CÁLCULOS DO CARD "HOJE NA LOJA"
+  const hojeStr = new Date().toISOString().split('T')[0];
+  const entradasHoje = useMemo(
+    () =>
+      listaOrdens.filter((os) => os.data_abertura && os.data_abertura.startsWith(hojeStr)).length,
+    [listaOrdens, hojeStr]
+  );
+
+  const finalizadosHoje = useMemo(
+    () =>
+      listaOrdens.filter(
+        (os) =>
+          os.status_os === 'PRONTO' ||
+          (os.data_conclusao && os.data_conclusao.startsWith(hojeStr))
+      ).length,
+    [listaOrdens, hojeStr]
+  );
+
+  const entreguesTotal = useMemo(
+    () => listaOrdens.filter((os) => os.status_os === 'ENTREGUE').length,
+    [listaOrdens]
+  );
+
+  const orcamentosPendentes = useMemo(
+    () =>
+      listaOrdens.filter(
+        (os) =>
+          !os.orcamentoCalculado?.valorTotalOrcamento ||
+          os.status_os === 'AGUARDANDO_AVALIACAO'
+      ).length,
+    [listaOrdens]
+  );
+
+  // Meta de Faturamento
+  const metaFaturamento = 8000;
+  const percentualMeta = Math.min(100, Math.round((faturamentoMes / metaFaturamento) * 100));
+
+  // Formatação de data da tabela (ex: 17 out, 09:42)
+  const formatarDataEntrada = (dataIso?: string) => {
+    if (!dataIso) return '--';
+    const d = new Date(dataIso);
+    const dia = d.getDate();
+    const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const mes = meses[d.getMonth()];
+    const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `${dia} ${mes}, ${hora}`;
+  };
+
+  // Badges fiéis ao Figma
+  const renderStatusBadge = (status: StatusOS) => {
+    switch (status) {
+      case 'EM_MANUTENCAO':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25">
+            Em bancada
+          </span>
+        );
+      case 'AGUARDANDO_PECA':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25">
+            Aguardando peça
+          </span>
+        );
+      case 'PRONTO':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+            Pronto
+          </span>
+        );
+      case 'EM_ANALISE':
+      case 'AGUARDANDO_AVALIACAO':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+            Em diagnóstico
+          </span>
+        );
+      case 'ENTREGUE':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-zinc-700/30 text-zinc-300 border border-zinc-700/40">
+            Entregue
+          </span>
+        );
+      case 'CANCELADO':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/25">
+            Cancelado
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-zinc-800 text-zinc-300">
+            {status}
+          </span>
+        );
+    }
+  };
+
+  const ordensEmAndamento = useMemo(() => {
+    return listaOrdens
+      .filter((os) => os.status_os !== 'ENTREGUE' && os.status_os !== 'CANCELADO')
+      .slice(0, 6);
+  }, [listaOrdens]);
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-20 space-y-4">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs text-zinc-400 font-medium">Carregando dados da bancada...</p>
+      <div className="flex flex-col items-center justify-center p-24 space-y-4">
+        <div className="w-9 h-9 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-xs text-zinc-400 font-semibold tracking-wider uppercase">
+          Carregando painel operacional...
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-[1600px] mx-auto">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Na Bancada</span>
-          <h3 className="text-2xl font-black text-white mt-2">{osNaBancada}</h3>
-          <p className="text-[11px] text-zinc-500 mt-1">Serviços em andamento</p>
-        </div>
-
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Faturamento / Lucro Real</span>
-          <h3 className="text-2xl font-black text-white mt-2">R$ {faturamentoBruto.toFixed(2)}</h3>
-          <span className={`text-[11px] font-semibold block mt-1 ${lucroLiquidoReal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            Lucro Real: R$ {lucroLiquidoReal.toFixed(2)} (Custos: R$ {custosTotais.toFixed(2)})
+    <div className="space-y-8 max-w-[1600px] mx-auto font-sans pb-10">
+      {/* ================= CABEÇALHO DO PAINEL ================= */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <span className="text-[11px] font-bold tracking-widest text-blue-400 uppercase">
+            RESUMO OPERACIONAL
           </span>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1 tracking-tight">
+            {saudacao}, {primeiroNome}
+          </h2>
+          <p className="text-xs text-zinc-400 mt-1">
+            Movimento da assistência em {dataHojeExtenso}.
+          </p>
         </div>
 
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aparelhos Prontos</span>
-          <h3 className="text-2xl font-black text-white mt-2">{aparelhosProntos}</h3>
-          <p className="text-[11px] text-zinc-500 mt-1">Aguardando retirada</p>
-        </div>
-
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Total de OS</span>
-            <h3 className="text-2xl font-black text-blue-400 mt-2">{listaOrdens.length}</h3>
-          </div>
+        <div>
           <button
             onClick={carregarOrdens}
-            className="p-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+            className="px-4 py-2 bg-[#0e1422] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-200 transition flex items-center space-x-2 shadow-sm"
           >
-            🔄 Atualizar
+            <svg
+              className="w-3.5 h-3.5 text-zinc-400"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>Atualizar dados</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h3 className="text-sm font-bold text-white">Ordens de Serviço em Andamento</h3>
-          <div className="flex items-center space-x-3">
-            <input
-              type="text"
-              placeholder="Buscar cliente, modelo, OS..."
-              value={termoBusca}
-              onChange={(e) => setTermoBusca(e.target.value)}
-              className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-blue-500"
-            />
-            <select
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value)}
-              className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 outline-none"
-            >
-              <option value="TODOS">Todos os Status</option>
-              <option value="AGUARDANDO_AVALIACAO">Aguardando Avaliação</option>
-              <option value="EM_ANALISE">Em Análise</option>
-              <option value="AGUARDANDO_PECA">Aguardando Peça</option>
-              <option value="EM_MANUTENCAO">Em Manutenção</option>
-              <option value="PRONTO">Pronto</option>
-              <option value="ENTREGUE">Entregue</option>
-            </select>
+      {/* ================= 4 CARDS SUPERIORES ================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Na Bancada */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Na bancada</span>
+            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+              </svg>
+            </div>
           </div>
+          <h3 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
+            {String(ordensNaBancada.length).padStart(2, '0')}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            {aguardamDiagnostico} aguardam diagnóstico
+          </p>
         </div>
 
-        {ordensFiltradas.length === 0 ? (
-          <div className="p-16 text-center space-y-2">
-            <h3 className="text-sm font-bold text-zinc-300">Nenhuma Ordem Encontrada</h3>
-            <p className="text-xs text-zinc-500">Cadastre uma nova OS para começar a monitorar a bancada.</p>
+        {/* Card 2: Prontos para Retirada */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Prontos para retirada</span>
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-zinc-300">
-              <thead className="bg-zinc-950/80 text-zinc-400 uppercase border-b border-zinc-800 font-semibold">
-                <tr>
-                  <th className="p-4">Nº OS</th>
-                  <th className="p-4">Cliente / Contato</th>
-                  <th className="p-4">Aparelho / Modelo</th>
-                  <th className="p-4">Defeito Relatado</th>
-                  <th className="p-4">Status Bancada</th>
-                  <th className="p-4 text-right">Valor Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/50">
-                {ordensFiltradas.map((os) => (
-                  <tr key={os.id_os} className="hover:bg-zinc-800/30 transition">
-                    <td className="p-4 font-mono font-bold text-blue-400">{os.numero_os}</td>
-                    <td className="p-4 font-bold text-white">{os.cliente?.nome}</td>
-                    <td className="p-4 font-medium text-zinc-200">{os.aparelho?.modelo}</td>
-                    <td className="p-4 max-w-xs truncate text-zinc-400">{os.defeitoRelatado}</td>
-                    <td className="p-4">
-                      <StatusBadge status={os.status_os} />
-                    </td>
-                    <td className="p-4 text-right font-bold text-white">
-                      R$ {(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
-                    </td>
+          <h3 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
+            {String(ordensProntas.length).padStart(2, '0')}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            R$ {valorTotalProntos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} em serviços
+          </p>
+        </div>
+
+        {/* Card 3: Aguardando Peça */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Aguardando peça</span>
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
+            {String(ordensAguardandoPeca.length).padStart(2, '0')}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            {ordensAguardandoPeca.length > 0 ? `${ordensAguardandoPeca.length} com fornecedor` : 'Nenhum atraso'}
+          </p>
+        </div>
+
+        {/* Card 4: Faturamento do Mês */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Faturamento do mês</span>
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
+            R$ {faturamentoMes.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            Lucro líquido R$ {lucroLiquidoReal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </p>
+        </div>
+      </div>
+
+      {/* ================= BLOCO PRINCIPAL (TABELA + COLUNA LATERAL) ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Coluna Esquerda: Tabela de Ordens */}
+        <div className="lg:col-span-2 bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm">
+          <div className="p-5 border-b border-zinc-800/80 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-white">Ordens em andamento</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">Serviços que exigem acompanhamento</p>
+            </div>
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate('historico')}
+                className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition flex items-center space-x-1"
+              >
+                <span>Ver histórico</span>
+                <span>&rsaquo;</span>
+              </button>
+            )}
+          </div>
+
+          {ordensEmAndamento.length === 0 ? (
+            <div className="p-16 text-center space-y-2">
+              <p className="text-sm font-bold text-zinc-300">Nenhuma ordem em andamento no momento</p>
+              <p className="text-xs text-zinc-400">
+                Todas as ordens de serviço foram finalizadas ou entregues.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#090d15] text-[10px] text-zinc-400 uppercase tracking-wider border-b border-zinc-800/60">
+                  <tr>
+                    <th className="py-3 px-5 font-bold">ORDEM</th>
+                    <th className="py-3 px-5 font-bold">CLIENTE</th>
+                    <th className="py-3 px-5 font-bold">APARELHO / SERVIÇO</th>
+                    <th className="py-3 px-5 font-bold">ENTRADA</th>
+                    <th className="py-3 px-5 font-bold text-center">STATUS</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/40">
+                  {ordensEmAndamento.map((os) => (
+                    <tr key={os.id_os} className="hover:bg-zinc-800/20 transition">
+                      <td className="py-3.5 px-5 font-bold text-blue-400 font-mono">
+                        {os.numero_os}
+                      </td>
+
+                      <td className="py-3.5 px-5">
+                        <p className="font-bold text-white text-xs">{os.cliente?.nome || 'Cliente Balcão'}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">{os.cliente?.whatsapp || 'Sem telefone'}</p>
+                      </td>
+
+                      <td className="py-3.5 px-5">
+                        <p className="font-semibold text-zinc-200 text-xs">
+                          {os.aparelho?.modelo || 'Smartphone'}
+                        </p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-[220px]">
+                          {os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral'}
+                        </p>
+                      </td>
+
+                      <td className="py-3.5 px-5 text-zinc-400 font-medium">
+                        {formatarDataEntrada(os.data_abertura)}
+                      </td>
+
+                      <td className="py-3.5 px-5 text-center">
+                        {renderStatusBadge(os.status_os)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Coluna Direita: Cards "Hoje na loja" e "Meta de faturamento" */}
+        <div className="space-y-6">
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/60 mb-4">
+              <h3 className="text-sm font-bold text-white">Hoje na loja</h3>
+              {horaAtual && <span className="text-xs text-zinc-400">até {horaAtual}</span>}
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-zinc-300 font-medium">Entradas</span>
+                </div>
+                <span className="font-bold text-white text-sm">{entradasHoje}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-zinc-300 font-medium">Finalizados</span>
+                </div>
+                <span className="font-bold text-white text-sm">{finalizadosHoje}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  <span className="text-zinc-300 font-medium">Entregues</span>
+                </div>
+                <span className="font-bold text-white text-sm">{entreguesTotal}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-zinc-300 font-medium">Orçamentos pendentes</span>
+                </div>
+                <span className="font-bold text-white text-sm">{orcamentosPendentes}</span>
+              </div>
+            </div>
           </div>
-        )}
+
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm">
+            <p className="text-xs font-medium text-zinc-400">Meta de faturamento</p>
+            <div className="flex items-baseline justify-between mt-2">
+              <h4 className="text-2xl font-extrabold text-white">
+                R$ {faturamentoMes.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </h4>
+              <span className="text-xs text-zinc-400">
+                de R$ {metaFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            </div>
+
+            <div className="w-full bg-zinc-800/80 rounded-full h-2 mt-4 overflow-hidden">
+              <div
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${percentualMeta}%` }}
+              />
+            </div>
+
+            <p className="text-xs text-zinc-400 mt-2.5 font-medium">
+              {percentualMeta}% da meta mensal
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

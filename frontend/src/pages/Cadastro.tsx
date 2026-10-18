@@ -5,41 +5,35 @@ export const Cadastros: React.FC = () => {
   const [servicos, setServicos] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
-  
-  // Estados para Serviço (Cadastro / Edição)
-  const [editandoServicoId, setEditandoServicoId] = useState<string | null>(null);
-  const [novoServicoNome, setNovoServicoNome] = useState('');
-  const [novoServicoPreco, setNovoServicoPreco] = useState('');
-  
-  // Estados para Fornecedor (Cadastro / Edição)
-  const [editandoFornId, setEditandoFornId] = useState<string | null>(null);
-  const [novoFornNome, setNovoFornNome] = useState('');
-  const [novoFornContato, setNovoFornContato] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // Estados para Cliente (Cadastro / Edição)
-  const [editandoCliId, setEditandoCliId] = useState<string | null>(null);
-  const [novoCliNome, setNovoCliNome] = useState('');
-  const [novoCliWhatsapp, setNovoCliWhatsapp] = useState('');
-  const [novoCliCpfCnpj, setNovoCliCpfCnpj] = useState('');
-  const [novoCliEmail, setNovoCliEmail] = useState('');
+  // Estados dos inputs rápidos
+  const [inputServico, setInputServico] = useState('');
+  const [inputFornecedor, setInputFornecedor] = useState('');
+  const [inputCliente, setInputCliente] = useState('');
 
-  const [carregando, setCarregando] = useState(false);
+  // Modais de Criação / Edição
+  const [modalServico, setModalServico] = useState<{ id?: string; nome: string; preco: string } | null>(null);
+  const [modalFornecedor, setModalFornecedor] = useState<{ id?: string; nome: string; contato: string } | null>(null);
+  const [modalCliente, setModalCliente] = useState<{ id?: string; nome: string; whatsapp: string; cpfCnpj: string } | null>(null);
+
+  const [salvando, setSalvando] = useState(false);
 
   const carregarDados = async () => {
-    setCarregando(true);
+    setLoading(true);
     try {
-      const { data: dataServ, error: errServ } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
-      if (!errServ && dataServ) setServicos(dataServ);
+      const { data: dataServ } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
+      if (dataServ) setServicos(dataServ);
 
-      const { data: dataForn, error: errForn } = await supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true });
-      if (!errForn && dataForn) setFornecedores(dataForn);
+      const { data: dataForn } = await supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true });
+      if (dataForn) setFornecedores(dataForn);
 
-      const { data: dataCli, error: errCli } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
-      if (!errCli && dataCli) setClientes(dataCli);
-    } catch (e) {
-      console.error("Erro ao buscar cadastros no Supabase:", e);
+      const { data: dataCli } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
+      if (dataCli) setClientes(dataCli);
+    } catch (err) {
+      console.error('Erro ao carregar cadastros:', err);
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   };
 
@@ -47,440 +41,618 @@ export const Cadastros: React.FC = () => {
     carregarDados();
   }, []);
 
-  // --- SERVIÇOS ---
+  // ================= AÇÕES: SERVIÇOS =================
+  const handleAbrirCriarServico = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setModalServico({ nome: inputServico.trim(), preco: '' });
+  };
+
   const handleSalvarServico = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoServicoNome.trim()) return;
+    if (!modalServico || !modalServico.nome.trim()) return;
 
+    setSalvando(true);
     try {
-      if (editandoServicoId) {
+      const precoNum = Number(modalServico.preco) || 0;
+      if (modalServico.id) {
         // Atualizar
-        const { error } = await supabase.from('cad_servicos').update({
-          nome: novoServicoNome,
-          preco_sugerido: novoServicoPreco === '' ? 0 : Number(novoServicoPreco),
-        }).eq('id_servico', editandoServicoId);
-
-        if (!error) {
-          setEditandoServicoId(null);
-          setNovoServicoNome('');
-          setNovoServicoPreco('');
-          carregarDados();
-        } else {
-          alert("Erro ao atualizar serviço: " + error.message);
-        }
+        await supabase
+          .from('cad_servicos')
+          .update({
+            nome: modalServico.nome.trim(),
+            preco_sugerido: precoNum,
+          })
+          .eq('id_servico', modalServico.id);
       } else {
         // Inserir Novo
-        const novoId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const { error } = await supabase.from('cad_servicos').insert([{
-          id_servico: novoId,
-          nome: novoServicoNome,
-          preco_sugerido: novoServicoPreco === '' ? 0 : Number(novoServicoPreco),
-        }]);
-
-        if (!error) {
-          setNovoServicoNome('');
-          setNovoServicoPreco('');
-          carregarDados();
-        } else {
-          alert("Erro ao cadastrar serviço: " + error.message);
-        }
+        const { data: { user } } = await supabase.auth.getUser();
+        const novoId = crypto.randomUUID ? crypto.randomUUID() : 'srv_' + Math.random().toString(36).substring(2);
+        await supabase.from('cad_servicos').insert([
+          {
+            id_servico: novoId,
+            nome: modalServico.nome.trim(),
+            preco_sugerido: precoNum,
+            user_id: user?.id,
+          },
+        ]);
       }
-    } catch (err) {
-      console.error("Erro ao salvar serviço:", err);
+      setModalServico(null);
+      setInputServico('');
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao salvar serviço: ${err.message}`);
+    } finally {
+      setSalvando(false);
     }
   };
 
-  const iniciarEdicaoServico = (s: any) => {
-    setEditandoServicoId(s.id_servico || s.id);
-    setNovoServicoNome(s.nome || '');
-    setNovoServicoPreco(s.preco_sugerido !== undefined ? s.preco_sugerido : (s.preco || ''));
-  };
-
-  const cancelarEdicaoServico = () => {
-    setEditandoServicoId(null);
-    setNovoServicoNome('');
-    setNovoServicoPreco('');
-  };
-
-  const handleExcluirServico = async (id: string) => {
-    if (!window.confirm("Deseja realmente excluir este serviço?")) return;
+  const handleExcluirServico = async (id: string, nome: string) => {
+    if (!window.confirm(`Deseja realmente excluir o serviço "${nome}"?`)) return;
     try {
-      const { error } = await supabase.from('cad_servicos').delete().eq('id_servico', id);
-      if (!error) carregarDados();
-      else alert("Erro ao excluir serviço: " + error.message);
-    } catch (err) {
-      console.error("Erro ao excluir serviço:", err);
+      await supabase.from('cad_servicos').delete().eq('id_servico', id);
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao excluir: ${err.message}`);
     }
   };
 
+  // ================= AÇÕES: FORNECEDORES =================
+  const handleAbrirCriarFornecedor = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setModalFornecedor({ nome: inputFornecedor.trim(), contato: '' });
+  };
 
-  // --- FORNECEDORES ---
   const handleSalvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoFornNome.trim()) return;
+    if (!modalFornecedor || !modalFornecedor.nome.trim()) return;
 
+    setSalvando(true);
     try {
-      if (editandoFornId) {
+      if (modalFornecedor.id) {
         // Atualizar
-        const { error } = await supabase.from('cad_fornecedores').update({
-          nome: novoFornNome,
-          contato: novoFornContato,
-        }).eq('id_fornecedor', editandoFornId);
-
-        if (!error) {
-          setEditandoFornId(null);
-          setNovoFornNome('');
-          setNovoFornContato('');
-          carregarDados();
-        } else {
-          alert("Erro ao atualizar fornecedor: " + error.message);
-        }
+        await supabase
+          .from('cad_fornecedores')
+          .update({
+            nome: modalFornecedor.nome.trim(),
+            contato: modalFornecedor.contato.trim(),
+          })
+          .eq('id_fornecedor', modalFornecedor.id);
       } else {
         // Inserir Novo
-        const novoId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const { error } = await supabase.from('cad_fornecedores').insert([{
-          id_fornecedor: novoId,
-          nome: novoFornNome,
-          contato: novoFornContato,
-        }]);
-
-        if (!error) {
-          setNovoFornNome('');
-          setNovoFornContato('');
-          carregarDados();
-        } else {
-          alert("Erro ao cadastrar fornecedor: " + error.message);
-        }
+        const { data: { user } } = await supabase.auth.getUser();
+        const novoId = crypto.randomUUID ? crypto.randomUUID() : 'forn_' + Math.random().toString(36).substring(2);
+        await supabase.from('cad_fornecedores').insert([
+          {
+            id_fornecedor: novoId,
+            nome: modalFornecedor.nome.trim(),
+            contato: modalFornecedor.contato.trim(),
+            user_id: user?.id,
+          },
+        ]);
       }
-    } catch (err) {
-      console.error("Erro ao salvar fornecedor:", err);
+      setModalFornecedor(null);
+      setInputFornecedor('');
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao salvar fornecedor: ${err.message}`);
+    } finally {
+      setSalvando(false);
     }
   };
 
-  const iniciarEdicaoFornecedor = (f: any) => {
-    setEditandoFornId(f.id_fornecedor || f.id);
-    setNovoFornNome(f.nome || '');
-    setNovoFornContato(f.contato || '');
-  };
-
-  const cancelarEdicaoFornecedor = () => {
-    setEditandoFornId(null);
-    setNovoFornNome('');
-    setNovoFornContato('');
-  };
-
-  const handleExcluirFornecedor = async (id: string) => {
-    if (!window.confirm("Deseja realmente excluir este fornecedor?")) return;
+  const handleExcluirFornecedor = async (id: string, nome: string) => {
+    if (!window.confirm(`Deseja realmente excluir o fornecedor "${nome}"?`)) return;
     try {
-      const { error } = await supabase.from('cad_fornecedores').delete().eq('id_fornecedor', id);
-      if (!error) carregarDados();
-      else alert("Erro ao excluir fornecedor: " + error.message);
-    } catch (err) {
-      console.error("Erro ao excluir fornecedor:", err);
+      await supabase.from('cad_fornecedores').delete().eq('id_fornecedor', id);
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao excluir: ${err.message}`);
     }
   };
 
+  // ================= AÇÕES: CLIENTES =================
+  const handleAbrirCriarCliente = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setModalCliente({ nome: inputCliente.trim(), whatsapp: '', cpfCnpj: '' });
+  };
 
-  // --- CLIENTES ---
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoCliNome.trim()) return;
+    if (!modalCliente || !modalCliente.nome.trim()) return;
 
+    setSalvando(true);
     try {
-      if (editandoCliId) {
+      if (modalCliente.id) {
         // Atualizar
-        const { error } = await supabase.from('clientes').update({
-          nome: novoCliNome,
-          whatsapp: novoCliWhatsapp,
-          cpf_cnpj: novoCliCpfCnpj || null,
-          email: novoCliEmail || null,
-        }).eq('id_cliente', editandoCliId);
-
-        if (!error) {
-          setEditandoCliId(null);
-          setNovoCliNome('');
-          setNovoCliWhatsapp('');
-          setNovoCliCpfCnpj('');
-          setNovoCliEmail('');
-          carregarDados();
-        } else {
-          alert("Erro ao atualizar cliente: " + error.message);
-        }
+        await supabase
+          .from('clientes')
+          .update({
+            nome: modalCliente.nome.trim(),
+            whatsapp: modalCliente.whatsapp.trim(),
+            cpf_cnpj: modalCliente.cpfCnpj.trim() || null,
+          })
+          .eq('id_cliente', modalCliente.id);
       } else {
         // Inserir Novo
-        const novoId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const { error } = await supabase.from('clientes').insert([{
-          id_cliente: novoId,
-          nome: novoCliNome,
-          whatsapp: novoCliWhatsapp,
-          cpf_cnpj: novoCliCpfCnpj || null,
-          email: novoCliEmail || null,
-        }]);
-
-        if (!error) {
-          setNovoCliNome('');
-          setNovoCliWhatsapp('');
-          setNovoCliCpfCnpj('');
-          setNovoCliEmail('');
-          carregarDados();
-        } else {
-          alert("Erro ao cadastrar cliente: " + error.message);
-        }
+        const { data: { user } } = await supabase.auth.getUser();
+        const novoId = crypto.randomUUID ? crypto.randomUUID() : 'cli_' + Math.random().toString(36).substring(2);
+        await supabase.from('clientes').insert([
+          {
+            id_cliente: novoId,
+            nome: modalCliente.nome.trim(),
+            whatsapp: modalCliente.whatsapp.trim(),
+            cpf_cnpj: modalCliente.cpfCnpj.trim() || null,
+            user_id: user?.id,
+          },
+        ]);
       }
-    } catch (err) {
-      console.error("Erro ao salvar cliente:", err);
+      setModalCliente(null);
+      setInputCliente('');
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao salvar cliente: ${err.message}`);
+    } finally {
+      setSalvando(false);
     }
   };
 
-  const iniciarEdicaoCliente = (c: any) => {
-    setEditandoCliId(c.id_cliente || c.id);
-    setNovoCliNome(c.nome || '');
-    setNovoCliWhatsapp(c.whatsapp || c.telefone || '');
-    setNovoCliCpfCnpj(c.cpf_cnpj || c.cpf || '');
-    setNovoCliEmail(c.email || '');
-  };
-
-  const cancelarEdicaoCliente = () => {
-    setEditandoCliId(null);
-    setNovoCliNome('');
-    setNovoCliWhatsapp('');
-    setNovoCliCpfCnpj('');
-    setNovoCliEmail('');
-  };
-
-  const handleExcluirCliente = async (id: string) => {
-    if (!window.confirm("Deseja realmente excluir este cliente?")) return;
+  const handleExcluirCliente = async (id: string, nome: string) => {
+    if (!window.confirm(`Deseja realmente excluir o cliente "${nome}"?`)) return;
     try {
-      const { error } = await supabase.from('clientes').delete().eq('id_cliente', id);
-      if (!error) carregarDados();
-      else alert("Erro ao excluir cliente: " + error.message);
-    } catch (err) {
-      console.error("Erro ao excluir cliente:", err);
+      await supabase.from('clientes').delete().eq('id_cliente', id);
+      await carregarDados();
+    } catch (err: any) {
+      alert(`Erro ao excluir: ${err.message}`);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-24 space-y-4">
+        <div className="w-9 h-9 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-xs text-zinc-400 font-semibold tracking-wider uppercase">
+          Carregando central de cadastros...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto text-xs">
-      <div className="border-b border-zinc-800 pb-4">
-        <h2 className="text-xl font-bold text-white">Central de Cadastros</h2>
-        <p className="text-zinc-400 mt-0.5">Gerencie, edite ou exclua os serviços, fornecedores e clientes cadastrados no sistema.</p>
+    <div className="space-y-8 max-w-[1600px] mx-auto font-sans pb-12">
+      {/* ================= CABEÇALHO (FIGMA) ================= */}
+      <div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          Central de cadastros
+        </h2>
+        <p className="text-xs text-zinc-400 mt-1">
+          Gerencie serviços, fornecedores e clientes utilizados no atendimento.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* SEÇÃO 1: SERVIÇOS */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col">
-          <div className="flex items-center justify-between text-blue-400 font-bold text-sm">
-            <div className="flex items-center space-x-2">
-              <span>🔧</span>
-              <h3>Serviços {editandoServicoId && <span className="text-amber-400 font-normal">(Editando)</span>}</h3>
+      {/* ================= GRADE COM AS 3 COLUNAS DO FIGMA ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* ================= COLUNA 1: SERVIÇOS ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/60">
+              <div className="flex items-center space-x-2.5">
+                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+                </svg>
+                <h3 className="text-sm font-bold text-white">Serviços</h3>
+              </div>
+              <span className="text-xs text-zinc-400 font-medium">{servicos.length} registros</span>
             </div>
-            {editandoServicoId && (
-              <button onClick={cancelarEdicaoServico} className="text-[10px] text-zinc-400 hover:text-white underline">
-                Cancelar Edição
+
+            {/* Input + Botão + */}
+            <form onSubmit={handleAbrirCriarServico} className="flex items-center space-x-2 mt-4">
+              <input
+                type="text"
+                value={inputServico}
+                onChange={(e) => setInputServico(e.target.value)}
+                placeholder="Novo serviço..."
+                className="flex-1 px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+              />
+              <button
+                type="submit"
+                title="Adicionar serviço"
+                className="w-10 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl flex items-center justify-center shrink-0 transition shadow-md shadow-blue-600/20"
+              >
+                <span className="text-lg leading-none">+</span>
               </button>
-            )}
-          </div>
+            </form>
 
-          <form onSubmit={handleSalvarServico} className="space-y-2.5 bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-            <input
-              type="text"
-              placeholder="Nome do Serviço..."
-              value={novoServicoNome}
-              onChange={(e) => setNovoServicoNome(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-blue-500"
-            />
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Preço Sugerido (R$)"
-              value={novoServicoPreco}
-              onChange={(e) => setNovoServicoPreco(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-emerald-400 font-bold outline-none focus:border-blue-500"
-            />
-            <button type="submit" className={`w-full py-2 font-bold rounded-xl transition text-white ${editandoServicoId ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
-              {editandoServicoId ? '💾 Salvar Alterações' : '+ Adicionar Serviço'}
-            </button>
-          </form>
+            {/* Lista */}
+            <div className="divide-y divide-zinc-800/40 mt-4 max-h-[520px] overflow-y-auto pr-1">
+              {servicos.length === 0 ? (
+                <p className="text-xs text-zinc-400 text-center py-8">Nenhum serviço cadastrado.</p>
+              ) : (
+                servicos.map((s) => {
+                  const id = s.id_servico || s.id;
+                  const preco = Number(s.preco_sugerido || s.preco || 0);
 
-          <div className="flex-1 overflow-y-auto max-h-56 divide-y divide-zinc-800/50 bg-zinc-950 p-2 rounded-xl border border-zinc-800">
-            {carregando ? (
-              <p className="text-center text-zinc-500 py-4">Carregando...</p>
-            ) : servicos.length === 0 ? (
-              <p className="text-center text-zinc-500 py-4">Nenhum serviço.</p>
-            ) : (
-              servicos.map((s) => (
-                <div key={s.id_servico || s.id} className="py-2.5 px-2 flex justify-between items-center hover:bg-zinc-900/30 rounded-lg">
-                  <div>
-                    <span className="text-white font-medium block">{s.nome}</span>
-                    <span className="text-emerald-400 font-bold">R$ {Number(s.preco_sugerido || s.preco || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => iniciarEdicaoServico(s)}
-                      className="p-1 text-blue-400 hover:bg-blue-500/20 rounded-md transition"
-                      title="Editar serviço"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleExcluirServico(s.id_servico || s.id)}
-                      className="p-1 text-red-400 hover:bg-red-500/20 rounded-md transition"
-                      title="Excluir serviço"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+                  return (
+                    <div key={id} className="py-3 flex items-center justify-between hover:bg-zinc-800/20 px-2 rounded-xl transition">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-xs font-bold text-white truncate">{s.nome}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                          R$ {preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          onClick={() => setModalServico({ id, nome: s.nome, preco: String(preco) })}
+                          title="Editar"
+                          className="p-1.5 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleExcluirServico(id, s.nome)}
+                          title="Excluir"
+                          className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 
-        {/* SEÇÃO 2: FORNECEDORES */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col">
-          <div className="flex items-center justify-between text-amber-400 font-bold text-sm">
-            <div className="flex items-center space-x-2">
-              <span>📦</span>
-              <h3>Fornecedores {editandoFornId && <span className="text-amber-400 font-normal">(Editando)</span>}</h3>
+        {/* ================= COLUNA 2: FORNECEDORES ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/60">
+              <div className="flex items-center space-x-2.5">
+                <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <h3 className="text-sm font-bold text-white">Fornecedores</h3>
+              </div>
+              <span className="text-xs text-zinc-400 font-medium">{fornecedores.length} registros</span>
             </div>
-            {editandoFornId && (
-              <button onClick={cancelarEdicaoFornecedor} className="text-[10px] text-zinc-400 hover:text-white underline">
-                Cancelar Edição
+
+            {/* Input + Botão + */}
+            <form onSubmit={handleAbrirCriarFornecedor} className="flex items-center space-x-2 mt-4">
+              <input
+                type="text"
+                value={inputFornecedor}
+                onChange={(e) => setInputFornecedor(e.target.value)}
+                placeholder="Novo fornecedor..."
+                className="flex-1 px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+              />
+              <button
+                type="submit"
+                title="Adicionar fornecedor"
+                className="w-10 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl flex items-center justify-center shrink-0 transition shadow-md shadow-blue-600/20"
+              >
+                <span className="text-lg leading-none">+</span>
               </button>
-            )}
-          </div>
+            </form>
 
-          <form onSubmit={handleSalvarFornecedor} className="space-y-2.5 bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-            <input
-              type="text"
-              placeholder="Nome do Fornecedor..."
-              value={novoFornNome}
-              onChange={(e) => setNovoFornNome(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-amber-500"
-            />
-            <input
-              type="text"
-              placeholder="Contato / WhatsApp"
-              value={novoFornContato}
-              onChange={(e) => setNovoFornContato(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-amber-500"
-            />
-            <button type="submit" className={`w-full py-2 font-bold rounded-xl transition text-white ${editandoFornId ? 'bg-amber-600 hover:bg-amber-500' : 'bg-amber-600 hover:bg-amber-500'}`}>
-              {editandoFornId ? '💾 Salvar Alterações' : '+ Adicionar Fornecedor'}
-            </button>
-          </form>
+            {/* Lista */}
+            <div className="divide-y divide-zinc-800/40 mt-4 max-h-[520px] overflow-y-auto pr-1">
+              {fornecedores.length === 0 ? (
+                <p className="text-xs text-zinc-400 text-center py-8">Nenhum fornecedor cadastrado.</p>
+              ) : (
+                fornecedores.map((f) => {
+                  const id = f.id_fornecedor || f.id;
 
-          <div className="flex-1 overflow-y-auto max-h-56 divide-y divide-zinc-800/50 bg-zinc-950 p-2 rounded-xl border border-zinc-800">
-            {carregando ? (
-              <p className="text-center text-zinc-500 py-4">Carregando...</p>
-            ) : fornecedores.length === 0 ? (
-              <p className="text-center text-zinc-500 py-4">Nenhum fornecedor.</p>
-            ) : (
-              fornecedores.map((f) => (
-                <div key={f.id_fornecedor || f.id} className="py-2.5 px-2 flex justify-between items-center hover:bg-zinc-900/30 rounded-lg">
-                  <div>
-                    <span className="text-white font-medium block">{f.nome}</span>
-                    <span className="text-zinc-400 text-[10px]">{f.contato || 'Sem contato'}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => iniciarEdicaoFornecedor(f)}
-                      className="p-1 text-blue-400 hover:bg-blue-500/20 rounded-md transition"
-                      title="Editar fornecedor"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleExcluirFornecedor(f.id_fornecedor || f.id)}
-                      className="p-1 text-red-400 hover:bg-red-500/20 rounded-md transition"
-                      title="Excluir fornecedor"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+                  return (
+                    <div key={id} className="py-3 flex items-center justify-between hover:bg-zinc-800/20 px-2 rounded-xl transition">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-xs font-bold text-white truncate">{f.nome}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                          {f.contato || 'Sem contato'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          onClick={() => setModalFornecedor({ id, nome: f.nome, contato: f.contato || '' })}
+                          title="Editar"
+                          className="p-1.5 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleExcluirFornecedor(id, f.nome)}
+                          title="Excluir"
+                          className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 
-        {/* SEÇÃO 3: CLIENTES */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col">
-          <div className="flex items-center justify-between text-emerald-400 font-bold text-sm">
-            <div className="flex items-center space-x-2">
-              <span>👤</span>
-              <h3>Clientes {editandoCliId && <span className="text-amber-400 font-normal">(Editando)</span>}</h3>
+        {/* ================= COLUNA 3: CLIENTES ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/60">
+              <div className="flex items-center space-x-2.5">
+                <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <h3 className="text-sm font-bold text-white">Clientes</h3>
+              </div>
+              <span className="text-xs text-zinc-400 font-medium">{clientes.length} registros</span>
             </div>
-            {editandoCliId && (
-              <button onClick={cancelarEdicaoCliente} className="text-[10px] text-zinc-400 hover:text-white underline">
-                Cancelar Edição
+
+            {/* Input + Botão + */}
+            <form onSubmit={handleAbrirCriarCliente} className="flex items-center space-x-2 mt-4">
+              <input
+                type="text"
+                value={inputCliente}
+                onChange={(e) => setInputCliente(e.target.value)}
+                placeholder="Novo cliente..."
+                className="flex-1 px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+              />
+              <button
+                type="submit"
+                title="Adicionar cliente"
+                className="w-10 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl flex items-center justify-center shrink-0 transition shadow-md shadow-blue-600/20"
+              >
+                <span className="text-lg leading-none">+</span>
               </button>
-            )}
-          </div>
+            </form>
 
-          <form onSubmit={handleSalvarCliente} className="space-y-2.5 bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-            <input
-              type="text"
-              placeholder="Nome Completo..."
-              value={novoCliNome}
-              onChange={(e) => setNovoCliNome(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-emerald-500"
-            />
-            <input
-              type="text"
-              placeholder="WhatsApp..."
-              value={novoCliWhatsapp}
-              onChange={(e) => setNovoCliWhatsapp(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-emerald-500"
-            />
-            <input
-              type="text"
-              placeholder="CPF / CNPJ (Opcional)..."
-              value={novoCliCpfCnpj}
-              onChange={(e) => setNovoCliCpfCnpj(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-emerald-500"
-            />
-            <button type="submit" className={`w-full py-2 font-bold rounded-xl transition text-white ${editandoCliId ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
-              {editandoCliId ? '💾 Salvar Alterações' : '+ Cadastrar Cliente'}
-            </button>
-          </form>
+            {/* Lista */}
+            <div className="divide-y divide-zinc-800/40 mt-4 max-h-[520px] overflow-y-auto pr-1">
+              {clientes.length === 0 ? (
+                <p className="text-xs text-zinc-400 text-center py-8">Nenhum cliente cadastrado.</p>
+              ) : (
+                clientes.map((c) => {
+                  const id = c.id_cliente || c.id;
 
-          <div className="flex-1 overflow-y-auto max-h-56 divide-y divide-zinc-800/50 bg-zinc-950 p-2 rounded-xl border border-zinc-800">
-            {carregando ? (
-              <p className="text-center text-zinc-500 py-4">Carregando...</p>
-            ) : clientes.length === 0 ? (
-              <p className="text-center text-zinc-500 py-4">Nenhum cliente.</p>
-            ) : (
-              clientes.map((c) => (
-                <div key={c.id_cliente || c.id} className="py-2.5 px-2 flex justify-between items-center hover:bg-zinc-900/30 rounded-lg">
-                  <div>
-                    <span className="text-white font-medium block">{c.nome}</span>
-                    <span className="text-[10px] text-zinc-500">{c.whatsapp || 'Sem WhatsApp'}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => iniciarEdicaoCliente(c)}
-                      className="p-1 text-blue-400 hover:bg-blue-500/20 rounded-md transition"
-                      title="Editar cliente"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleExcluirCliente(c.id_cliente || c.id)}
-                      className="p-1 text-red-400 hover:bg-red-500/20 rounded-md transition"
-                      title="Excluir cliente"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+                  return (
+                    <div key={id} className="py-3 flex items-center justify-between hover:bg-zinc-800/20 px-2 rounded-xl transition">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-xs font-bold text-white truncate">{c.nome}</p>
+                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                          {c.whatsapp || c.telefone || 'Sem WhatsApp'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          onClick={() =>
+                            setModalCliente({
+                              id,
+                              nome: c.nome,
+                              whatsapp: c.whatsapp || c.telefone || '',
+                              cpfCnpj: c.cpf_cnpj || c.cpf || '',
+                            })
+                          }
+                          title="Editar"
+                          className="p-1.5 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleExcluirCliente(id, c.nome)}
+                          title="Excluir"
+                          className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
-
       </div>
+
+      {/* ================= MODAL: SERVIÇO ================= */}
+      {modalServico && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b0f19] border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-white">
+              {modalServico.id ? 'Editar Serviço' : 'Novo Serviço'}
+            </h3>
+
+            <form onSubmit={handleSalvarServico} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  NOME DO SERVIÇO *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalServico.nome}
+                  onChange={(e) => setModalServico({ ...modalServico, nome: e.target.value })}
+                  placeholder="Ex.: Troca de tela"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  PREÇO SUGERIDO (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={modalServico.preco}
+                  onChange={(e) => setModalServico({ ...modalServico, preco: e.target.value })}
+                  placeholder="0.00"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-zinc-800/60">
+                <button
+                  type="button"
+                  onClick={() => setModalServico(null)}
+                  className="px-4 py-2 bg-[#080c14] border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+                >
+                  {salvando ? 'Salvando...' : 'Salvar Serviço'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: FORNECEDOR ================= */}
+      {modalFornecedor && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b0f19] border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-white">
+              {modalFornecedor.id ? 'Editar Fornecedor' : 'Novo Fornecedor'}
+            </h3>
+
+            <form onSubmit={handleSalvarFornecedor} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  NOME DO FORNECEDOR *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalFornecedor.nome}
+                  onChange={(e) => setModalFornecedor({ ...modalFornecedor, nome: e.target.value })}
+                  placeholder="Ex.: Distribuidora Central"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  CONTATO / TELEFONE
+                </label>
+                <input
+                  type="text"
+                  value={modalFornecedor.contato}
+                  onChange={(e) => setModalFornecedor({ ...modalFornecedor, contato: e.target.value })}
+                  placeholder="Ex.: (85) 99999-9999 ou nome do vendedor"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-zinc-800/60">
+                <button
+                  type="button"
+                  onClick={() => setModalFornecedor(null)}
+                  className="px-4 py-2 bg-[#080c14] border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+                >
+                  {salvando ? 'Salvando...' : 'Salvar Fornecedor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: CLIENTE ================= */}
+      {modalCliente && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b0f19] border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-white">
+              {modalCliente.id ? 'Editar Cliente' : 'Novo Cliente'}
+            </h3>
+
+            <form onSubmit={handleSalvarCliente} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  NOME DO CLIENTE *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalCliente.nome}
+                  onChange={(e) => setModalCliente({ ...modalCliente, nome: e.target.value })}
+                  placeholder="Nome completo"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  WHATSAPP *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalCliente.whatsapp}
+                  onChange={(e) => setModalCliente({ ...modalCliente, whatsapp: e.target.value })}
+                  placeholder="(85) 99999-9999"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  CPF OU CNPJ
+                </label>
+                <input
+                  type="text"
+                  value={modalCliente.cpfCnpj}
+                  onChange={(e) => setModalCliente({ ...modalCliente, cpfCnpj: e.target.value })}
+                  placeholder="Opcional"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-zinc-800/60">
+                <button
+                  type="button"
+                  onClick={() => setModalCliente(null)}
+                  className="px-4 py-2 bg-[#080c14] border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+                >
+                  {salvando ? 'Salvando...' : 'Salvar Cliente'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -58,6 +58,7 @@ function formatarDataParaBanco(dataStr: string): string {
   return new Date(`${dataStr}T12:00:00`).toISOString();
 }
 
+// Em frontend/src/services/api.ts:
 export async function criarOrdemServico(payload: {
   cliente: any;
   aparelho: any;
@@ -75,16 +76,23 @@ export async function criarOrdemServico(payload: {
   parcelas?: number;
   valorLiquido?: number | null;
 }): Promise<{ idOs: string; numeroOs: string }> {
+  // 1. Obtém o usuário autenticado atual
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
+
   const numeroOsGerado = `OS-${Math.floor(100000 + Math.random() * 900000)}`;
   const idOsGerado = crypto.randomUUID ? crypto.randomUUID() : 'os_' + Math.random().toString(36).substring(2, 11);
 
   let idClienteFinal = payload.cliente?.idCliente;
   if (!idClienteFinal && payload.cliente?.nome) {
-    const { data: clienteExistente } = await supabase
+    let queryCli = supabase
       .from('clientes')
       .select('id_cliente')
-      .ilike('nome', payload.cliente.nome.trim())
-      .maybeSingle();
+      .ilike('nome', payload.cliente.nome.trim());
+
+    if (userId) queryCli = queryCli.eq('user_id', userId);
+
+    const { data: clienteExistente } = await queryCli.maybeSingle();
 
     if (clienteExistente?.id_cliente) {
       idClienteFinal = clienteExistente.id_cliente;
@@ -94,6 +102,7 @@ export async function criarOrdemServico(payload: {
         id_cliente: novoIdCliente,
         nome: payload.cliente.nome.trim(),
         whatsapp: payload.cliente.whatsapp || '',
+        user_id: userId,
       }]);
       if (!erroCli) idClienteFinal = novoIdCliente;
     }
@@ -104,19 +113,23 @@ export async function criarOrdemServico(payload: {
     await supabase.from('clientes').upsert([{
       id_cliente: idClienteFinal,
       nome: 'Cliente Balcão',
-      whatsapp: ''
+      whatsapp: '',
+      user_id: userId,
     }], { onConflict: 'id_cliente' });
   }
 
   let idAparelhoFinal = payload.aparelho?.idAparelho;
   if (!idAparelhoFinal && payload.aparelho?.modelo) {
     const modeloStr = payload.aparelho.modelo.trim();
-    const { data: aparelhoExistente } = await supabase
+    let queryApr = supabase
       .from('aparelhos_cliente')
       .select('id_aparelho')
       .eq('id_cliente', idClienteFinal)
-      .ilike('modelo', modeloStr)
-      .maybeSingle();
+      .ilike('modelo', modeloStr);
+
+    if (userId) queryApr = queryApr.eq('user_id', userId);
+
+    const { data: aparelhoExistente } = await queryApr.maybeSingle();
 
     if (aparelhoExistente?.id_aparelho) {
       idAparelhoFinal = aparelhoExistente.id_aparelho;
@@ -126,7 +139,8 @@ export async function criarOrdemServico(payload: {
         id_aparelho: novoIdAparelho,
         id_cliente: idClienteFinal,
         modelo: modeloStr,
-        imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null
+        imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null,
+        user_id: userId,
       }]);
       if (!erroApr) idAparelhoFinal = novoIdAparelho;
     }
@@ -138,6 +152,7 @@ export async function criarOrdemServico(payload: {
       id_aparelho: idAparelhoFinal,
       id_cliente: idClienteFinal,
       modelo: 'Smartphone Genérico',
+      user_id: userId,
     }], { onConflict: 'id_aparelho' });
   }
 
@@ -160,6 +175,7 @@ export async function criarOrdemServico(payload: {
     valor_liquido: payload.valorLiquido || payload.orcamentoCalculado?.valorTotalOrcamento || 0,
     possui_garantia: payload.possuiGarantia ?? true,
     data_abertura: payload.dataAbertura ? formatarDataParaBanco(payload.dataAbertura) : new Date().toISOString(),
+    user_id: userId,
   };
 
   const { data, error } = await supabase
@@ -171,6 +187,12 @@ export async function criarOrdemServico(payload: {
   if (error) {
     throw new Error(error.message || 'Falha ao salvar Ordem de Serviço no Supabase');
   }
+
+  return { 
+    idOs: data?.id_os || idOsGerado, 
+    numeroOs: data?.numero_os || numeroOsGerado 
+  };
+
 
   return { 
     idOs: data?.id_os || idOsGerado, 
@@ -422,4 +444,58 @@ export async function excluirOrdemServico(id_os: string): Promise<void> {
   if (error) {
     throw new Error(error.message || 'Falha ao excluir a Ordem de Serviço');
   }
+}
+
+// Adicione ao final de frontend/src/services/api.ts:
+
+export async function fazerLogin(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function cadastrarUsuario(dados: {
+  email: string;
+  password: string;
+  nomeResponsavel: string;
+  nomeAssistencia: string;
+  whatsapp: string;
+  cpfCnpj?: string;
+}) {
+  const { data, error } = await supabase.auth.signUp({
+    email: dados.email.trim(),
+    password: dados.password,
+    options: {
+      data: {
+        nome_responsavel: dados.nomeResponsavel.trim(),
+        nome_assistencia: dados.nomeAssistencia.trim(),
+        whatsapp: dados.whatsapp.trim(),
+        cpf_cnpj: dados.cpfCnpj?.trim() || null,
+      },
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function fazerLogout() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
+export async function recuperarSenha(email: string) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function obterSessaoAtual() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return session;
 }

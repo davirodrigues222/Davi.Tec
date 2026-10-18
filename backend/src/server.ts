@@ -442,6 +442,40 @@ app.delete("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
   }
 });
 
+// Cole aqui as rotas de auth:
+app.post("/v1/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return res.json({ sucesso: true, data });
+  } catch (err: any) {
+    return res.status(401).json({ sucesso: false, erro: err.message });
+  }
+});
+
+app.post("/v1/auth/registro", async (req: Request, res: Response) => {
+  try {
+    const { email, password, nomeResponsavel, nomeAssistencia, whatsapp, cpfCnpj } = req.body;
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          nome_responsavel: nomeResponsavel,
+          nome_assistencia: nomeAssistencia,
+          whatsapp,
+          cpf_cnpj: cpfCnpj || null,
+        },
+      },
+    });
+    if (error) throw error;
+    return res.status(201).json({ sucesso: true, data });
+  } catch (err: any) {
+    return res.status(400).json({ sucesso: false, erro: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Backend conectado ao Supabase rodando na porta ${PORT}`);
