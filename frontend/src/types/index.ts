@@ -41,6 +41,7 @@ export interface OrcamentoCalculado {
   custoPeca?: number;
   freteReal?: number;
   fornecedorPeca?: string;
+  tipoDesconto?: 'VALOR' | 'PERCENTUAL';
 }
 
 export interface HistoricoItem {
@@ -76,4 +77,15 @@ export interface OrdemServico {
   orcamentoCalculado: OrcamentoCalculado;
   garantia?: RegistroGarantia;
   historico?: HistoricoItem[];
+}
+
+// Adicione ao final de frontend/src/types/index.ts:
+
+export interface UsuarioAutenticado {
+  id: string;
+  email: string;
+  nomeResponsavel?: string;
+  nomeAssistencia?: string;
+  whatsapp?: string;
+  cpfCnpj?: string;
 }

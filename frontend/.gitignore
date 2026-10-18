@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+dist/
+dist_app/
+build/
+release/
+*.exe
+
+frontend/dist_app/
+dist_app/
+*.exe
+
+dist/
+dist_electron/

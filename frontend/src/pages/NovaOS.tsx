@@ -1,509 +1,576 @@
-import React, { useState, useEffect } from "react";
-import { criarOrdemServico } from "../services/api";
+import React, { useState, useEffect, useMemo } from 'react';
+import { criarOrdemServico } from '../services/api';
+import { supabase } from '../services/supabaseClient';
+import { CertidaoGarantia } from '../components/CertidaoGarantia';
 
-export const NovaOS: React.FC = () => {
+interface Props {
+  onNavigate?: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+}
+
+export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [listaClientes, setListaClientes] = useState<any[]>([]);
   const [listaFornecedores, setListaFornecedores] = useState<any[]>([]);
   const [listaServicos, setListaServicos] = useState<any[]>([]);
 
-  // Lista padrão de aparelhos populares em assistências
-  const modelosPopulares = [
-    // iPhones
-    "iPhone 7", "iPhone 8", "iPhone 8 Plus", "iPhone X", "iPhone XR", "iPhone XS", "iPhone XS Max",
-    "iPhone 11", "iPhone 11 Pro", "iPhone 11 Pro Max", "iPhone 12", "iPhone 12 Pro", "iPhone 12 Pro Max", "iPhone 12 Mini",
-    "iPhone 13", "iPhone 13 Pro", "iPhone 13 Pro Max", "iPhone 13 Mini", "iPhone 14", "iPhone 14 Plus", "iPhone 14 Pro", "iPhone 14 Pro Max",
-    "iPhone 15", "iPhone 15 Plus", "iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone 16", "iPhone 16 Pro",
-    // Samsung
-    "Samsung Galaxy A03", "Samsung Galaxy A04", "Samsung Galaxy A05", "Samsung Galaxy A13", "Samsung Galaxy A14", "Samsung Galaxy A15",
-    "Samsung Galaxy A32", "Samsung Galaxy A33", "Samsung Galaxy A34", "Samsung Galaxy A53", "Samsung Galaxy A54", "Samsung Galaxy A55",
-    "Samsung Galaxy S20", "Samsung Galaxy S21", "Samsung Galaxy S22", "Samsung Galaxy S23", "Samsung Galaxy S24", "Samsung Galaxy S24 Ultra",
-    // Xiaomi / Redmi
-    "Redmi 9C", "Redmi 10", "Redmi 12", "Redmi 13C", "Redmi Note 10", "Redmi Note 11", "Redmi Note 12", "Redmi Note 13", "POCO X5", "POCO X6",
-    // Motorola
-    "Moto G13", "Moto G14", "Moto G23", "Moto G24", "Moto G32", "Moto G52", "Moto G53", "Moto G54", "Moto Edge 30", "Moto Edge 40"
-  ];
-
-  const [sugestoesAparelho, setSugestoesAparelho] = useState<string[]>([]);
-
-  const [idClienteSelecionado, setIdClienteSelecionado] = useState("");
-  const [nomeCliente, setNomeCliente] = useState("");
-  const [whatsappCliente, setWhatsappCliente] = useState("");
-  const [cpfCnpjCliente, setCpfCnpjCliente] = useState("");
-  const [emailCliente, setEmailCliente] = useState("");
-
-  const [modeloAparelho, setModeloAparelho] = useState("");
-  const [imeiAparelho, setImeiAparelho] = useState("");
-  const [senhaAparelho, setSenhaAparelho] = useState("");
-  const [defeitoRelatado, setDefeitoRelatado] = useState("");
-  const [diagnostico, setDiagnostico] = useState("");
-  const [observacoes, setObservacoes] = useState("");
-
-  const [custoPeca, setCustoPeca] = useState<number | "">("");
-  const [formaPagamento, setFormaPagamento] = useState("PIX");
-  const [parcelas, setParcelas] = useState<number>(1);
-  const [valorLiquido, setValorLiquido] = useState<number | "">("");
-
-  const [freteReal, setFreteReal] = useState<number | "">("");
-  const [fornecedorPeca, setFornecedorPeca] = useState("");
-  const [descontoGeral, setDescontoGeral] = useState<number | "">("");
-  const [valorTotalOrcamento, setValorTotalOrcamento] = useState<number | "">("");
-  const [servicoSelecionadoId, setServicoSelecionadoId] = useState("");
-
+  // Topo: Cobertura
   const [possuiGarantia, setPossuiGarantia] = useState<boolean>(true);
 
-  const [dataAbertura, setDataAbertura] = useState(
-    new Date().toISOString().substring(0, 10),
-  );
-  const [dataPrevista, setDataPrevista] = useState("");
-  const [carregando, setCarregando] = useState(false);
-  const [sucessoMsg, setSucessoMsg] = useState("");
+  // Card 01: Cliente
+  const [idClienteSelecionado, setIdClienteSelecionado] = useState('');
+  const [nomeCliente, setNomeCliente] = useState('');
+  const [whatsappCliente, setWhatsappCliente] = useState('');
+  const [cpfCnpjCliente, setCpfCnpjCliente] = useState('');
 
-  const [checklist, setChecklist] = useState({
-    tela: "Bom",
-    bateria: "Bom",
-    carregamento: "Funcionando",
-    cameras: "Funcionando",
-    audio: "Funcionando",
-    botoes: "Funcionando",
+  // Card 02: Aparelho e datas
+  const [modeloAparelho, setModeloAparelho] = useState('');
+  const [imeiAparelho, setImeiAparelho] = useState('');
+  const [senhaAparelho, setSenhaAparelho] = useState('');
+  const [dataAbertura, setDataAbertura] = useState(new Date().toISOString().substring(0, 10));
+  const [dataPrevista, setDataPrevista] = useState('');
+
+  // Card 03: Serviço, diagnóstico e custos
+  const [servicoPadraoId, setServicoPadraoId] = useState('');
+  const [defeitoRelatado, setDefeitoRelatado] = useState('');
+  const [diagnostico, setDiagnostico] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+
+  const [custoPeca, setCustoPeca] = useState<number | ''>('');
+  const [freteReal, setFreteReal] = useState<number | ''>(0);
+  const [fornecedorPeca, setFornecedorPeca] = useState('');
+  const [tipoDesconto, setTipoDesconto] = useState<'VALOR' | 'PERCENTUAL'>('VALOR');
+  const [descontoCliente, setDescontoCliente] = useState<number | ''>('');
+  const [valorServico, setValorServico] = useState<number | ''>('');
+
+  const [formaPagamento, setFormaPagamento] = useState('Cartão de crédito');
+  const [parcelas, setParcelas] = useState(1);
+  const [taxaMaquinetaPercentual, setTaxaMaquinetaPercentual] = useState<number | ''>(3.19);
+
+  // Checklist de Entrada
+  const [mostrarChecklist, setMostrarChecklist] = useState(false);
+  const [checklist, setChecklist] = useState<Record<string, string>>({
+    ligando: 'OK',
+    touchScreen: 'OK',
+    display: 'OK',
+    cameraTraseira: 'OK',
+    cameraFrontal: 'OK',
+    microfone: 'OK',
+    altoFalante: 'OK',
+    conectorCarga: 'OK',
+    bateria: 'OK',
+    wifi: 'OK',
+    bluetooth: 'OK',
+    botoesLaterais: 'OK',
   });
 
+  const [carregando, setCarregando] = useState(false);
+  const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos?: any } | null>(null);
+  const [osParaImprimir, setOsParaImprimir] = useState<any>(null);
+
   useEffect(() => {
-    const carregarDadosCadastrados = async () => {
+    const carregarDadosIniciais = async () => {
       try {
-        const resCli = await fetch("http://localhost:3000/v1/clientes");
-        const dataCli = await resCli.json();
-        if (dataCli.sucesso) setListaClientes(dataCli.data);
+        const { data: dataCli } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
+        if (dataCli) setListaClientes(dataCli);
 
-        const resForn = await fetch("http://localhost:3000/v1/cadastros/fornecedores");
-        const dataForn = await resForn.json();
-        if (dataForn.sucesso) setListaFornecedores(dataForn.data);
+        const { data: dataForn } = await supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true });
+        if (dataForn) setListaFornecedores(dataForn);
 
-        const resServ = await fetch("http://localhost:3000/v1/cadastros/servicos");
-        const dataServ = await resServ.json();
-        if (dataServ.sucesso) setListaServicos(dataServ.data);
+        const { data: dataServ } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
+        if (dataServ) setListaServicos(dataServ);
       } catch (err) {
-        console.error("Erro ao buscar cadastros:", err);
+        console.error('Erro ao carregar dados auxiliares:', err);
       }
     };
-    carregarDadosCadastrados();
+    carregarDadosIniciais();
   }, []);
 
   const handleSelecionarCliente = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setIdClienteSelecionado(id);
-    const cli = listaClientes.find((c) => c.id_cliente === id);
+    const cli = listaClientes.find((c) => c.id_cliente === id || c.id === id);
     if (cli) {
-      setNomeCliente(cli.nome || "");
-      setWhatsappCliente(cli.whatsapp || "");
-      setCpfCnpjCliente(cli.cpf_cnpj || "");
-      setEmailCliente(cli.email || "");
+      setNomeCliente(cli.nome || '');
+      setWhatsappCliente(cli.whatsapp || cli.telefone || '');
+      setCpfCnpjCliente(cli.cpf_cnpj || cli.cpf || '');
     } else {
-      setNomeCliente("");
-      setWhatsappCliente("");
-      setCpfCnpjCliente("");
-      setEmailCliente("");
+      setNomeCliente('');
+      setWhatsappCliente('');
+      setCpfCnpjCliente('');
     }
   };
 
   const handleSelecionarServico = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
-    setServicoSelecionadoId(id);
-    const serv = listaServicos.find((s) => s.id_servico === id);
+    setServicoPadraoId(id);
+    const serv = listaServicos.find((s) => s.id_servico === id || s.id === id);
     if (serv) {
       setDefeitoRelatado(serv.nome);
-      if (serv.preco_sugerido) {
-        setValorTotalOrcamento(Number(serv.preco_sugerido));
+      if (serv.preco_sugerido || serv.preco) {
+        setValorServico(Number(serv.preco_sugerido || serv.preco));
       }
     }
   };
 
-  const handleDigitarModelo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const texto = e.target.value;
-    setModeloAparelho(texto);
+  // CÁLCULOS FINANCEIROS
+  const numPrecoServico = Number(valorServico) || 0;
+  const numDescontoInput = Number(descontoCliente) || 0;
 
-    if (texto.trim().length === 0) {
-      setSugestoesAparelho([]);
-      return;
+  const descontoCalculado = useMemo(() => {
+    if (tipoDesconto === 'PERCENTUAL') {
+      return (numPrecoServico * numDescontoInput) / 100;
     }
+    return numDescontoInput;
+  }, [numPrecoServico, numDescontoInput, tipoDesconto]);
 
-    const filtrados = modelosPopulares.filter((m) =>
-      m.toLowerCase().includes(texto.toLowerCase())
-    );
-    setSugestoesAparelho(filtrados);
-  };
+  const valorCobrado = Math.max(0, numPrecoServico - descontoCalculado);
+
+  const numTaxaPercentual = formaPagamento === 'Dinheiro' || formaPagamento === 'PIX'
+    ? 0
+    : Number(taxaMaquinetaPercentual) || 0;
+
+  const valorTaxaMaquineta = (valorCobrado * numTaxaPercentual) / 100;
+  const liquidoRecebido = Math.max(0, valorCobrado - valorTaxaMaquineta);
+
+  const numCustoPeca = Number(custoPeca) || 0;
+  const numFreteReal = Number(freteReal) || 0;
+  const lucroEstimado = liquidoRecebido - (numCustoPeca + numFreteReal);
+
+  // Ajuste automático de taxa conforme a forma de pagamento
+  useEffect(() => {
+    if (formaPagamento === 'Dinheiro' || formaPagamento === 'PIX') {
+      setTaxaMaquinetaPercentual(0);
+    } else if (formaPagamento === 'Cartão de débito') {
+      setTaxaMaquinetaPercentual(1.49);
+    } else if (formaPagamento === 'Cartão de crédito') {
+      if (parcelas === 1) setTaxaMaquinetaPercentual(3.19);
+      else if (parcelas <= 3) setTaxaMaquinetaPercentual(4.89);
+      else if (parcelas <= 6) setTaxaMaquinetaPercentual(6.49);
+      else setTaxaMaquinetaPercentual(8.99);
+    }
+  }, [formaPagamento, parcelas]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeCliente.trim() || !modeloAparelho.trim()) {
-      alert("Preencha ao menos o Nome do Cliente e o Modelo do Aparelho.");
+
+    if (!nomeCliente.trim() || !modeloAparelho.trim() || !defeitoRelatado.trim()) {
+      alert('Preencha os campos obrigatórios (*): Nome do Cliente, Modelo do Aparelho e Defeito Relatado.');
+      return;
+    }
+
+    if (numPrecoServico <= 0) {
+      alert('Informe o Valor do Serviço (*) antes de criar a ordem.');
       return;
     }
 
     setCarregando(true);
-    setSucessoMsg("");
-
     try {
       const payload = {
         cliente: {
           idCliente: idClienteSelecionado || undefined,
-          nome: nomeCliente,
-          whatsapp: whatsappCliente,
-          cpfCnpj: cpfCnpjCliente,
-          email: emailCliente,
+          nome: nomeCliente.trim(),
+          whatsapp: whatsappCliente.trim(),
+          cpfCnpj: cpfCnpjCliente.trim(),
         },
         aparelho: {
-          modelo: modeloAparelho,
-          imei1: imeiAparelho,
-          senhaDesbloqueio: senhaAparelho,
+          modelo: modeloAparelho.trim(),
+          imei1: imeiAparelho.trim(),
+          senhaDesbloqueio: senhaAparelho.trim(),
         },
-        defeitoRelatado,
-        diagnostico,
-        observacoes,
-        dataAbertura,
-        dataPrevistaEntrega: dataPrevista || null,
+        defeitoRelatado: defeitoRelatado.trim(),
+        diagnostico: diagnostico.trim(),
+        servicoRealizado: defeitoRelatado.trim(),
+        observacoes: observacoes.trim(),
+        dataAbertura: dataAbertura,
+        dataPrevistaEntrega: dataPrevista || undefined,
+        formaPagamento: formaPagamento,
+        parcelas: parcelas,
+        valorLiquido: liquidoRecebido,
+        possuiGarantia: possuiGarantia,
         checklistEntrada: checklist,
-        possuiGarantia,
-        formaPagamento,
-        parcelas,
-        valorLiquido: formaPagamento === "Cartão de Crédito" && parcelas <= 3 && valorLiquido !== "" ? Number(valorLiquido) : null,
         orcamentoCalculado: {
-          custoPeca: custoPeca === "" ? 0 : Number(custoPeca),
-          freteReal: freteReal === "" ? 0 : Number(freteReal),
-          fornecedorPeca,
-          descontoGeralAplicado: descontoGeral === "" ? 0 : Number(descontoGeral),
-          valorTotalOrcamento: valorTotalOrcamento === "" ? 0 : Number(valorTotalOrcamento),
-          subtotalServicos:
-            (valorTotalOrcamento === "" ? 0 : Number(valorTotalOrcamento)) +
-            (descontoGeral === "" ? 0 : Number(descontoGeral)),
+          subtotalServicos: numPrecoServico,
+          descontoGeralAplicado: descontoCalculado,
+          tipoDesconto: tipoDesconto,
+          valorTotalOrcamento: valorCobrado,
+          custoPeca: numCustoPeca,
+          freteReal: numFreteReal,
+          fornecedorPeca: fornecedorPeca,
+          lucroTotalEstimadoInterno: lucroEstimado,
         },
       };
 
-      const resposta: any = await criarOrdemServico(payload as any);
+      const resultado = await criarOrdemServico(payload);
 
-      if (resposta && resposta.numeroOs) {
-        setSucessoMsg(`Ordem de Serviço ${resposta.numeroOs} criada com sucesso!`);
-        setNomeCliente("");
-        setWhatsappCliente("");
-        setCpfCnpjCliente("");
-        setEmailCliente("");
-        setModeloAparelho("");
-        setImeiAparelho("");
-        setSenhaAparelho("");
-        setDefeitoRelatado("");
-        setDiagnostico("");
-        setObservacoes("");
-        setCustoPeca("");
-        setFreteReal("");
-        setFornecedorPeca("");
-        setDescontoGeral("");
-        setValorTotalOrcamento("");
-        setFormaPagamento("PIX");
-        setParcelas(1);
-        setValorLiquido("");
-      } else {
-        alert("Erro ao criar OS.");
-      }
+      setOsCriadaSucesso({
+        idOs: resultado.idOs,
+        numeroOs: resultado.numeroOs,
+        dadosCompletos: {
+          id_os: resultado.idOs,
+          numero_os: resultado.numeroOs,
+          ...payload,
+          data_abertura: dataAbertura,
+        },
+      });
     } catch (err: any) {
-      alert(err.message || "Erro de conexão com o servidor.");
+      console.error('Erro ao criar OS:', err);
+      alert(`Falha ao salvar Ordem de Serviço: ${err.message || 'Verifique sua conexão.'}`);
     } finally {
       setCarregando(false);
     }
   };
 
+  const handleLimparFormulario = () => {
+    setIdClienteSelecionado('');
+    setNomeCliente('');
+    setWhatsappCliente('');
+    setCpfCnpjCliente('');
+    setModeloAparelho('');
+    setImeiAparelho('');
+    setSenhaAparelho('');
+    setServicoPadraoId('');
+    setDefeitoRelatado('');
+    setDiagnostico('');
+    setObservacoes('');
+    setCustoPeca('');
+    setFreteReal(0);
+    setFornecedorPeca('');
+    setDescontoCliente('');
+    setValorServico('');
+    setOsCriadaSucesso(null);
+  };
+
+  const labelsChecklist: Record<string, string> = {
+    ligando: 'Ligando',
+    touchScreen: 'Touch screen',
+    display: 'Display',
+    cameraTraseira: 'Câmera traseira',
+    cameraFrontal: 'Câmera frontal',
+    microfone: 'Microfone',
+    altoFalante: 'Alto-falante',
+    conectorCarga: 'Conector de carga',
+    bateria: 'Bateria',
+    wifi: 'Wi-Fi',
+    bluetooth: 'Bluetooth',
+    botoesLaterais: 'Botões laterais',
+  };
+
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 text-xs text-zinc-300">
-      <div className="border-b border-zinc-800 pb-4 flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-bold text-white">Nova Ordem de Serviço</h2>
-          <p className="text-zinc-400 mt-0.5">
-            Cadastre um novo atendimento integrando clientes e serviços salvos.
-          </p>
-        </div>
-        {sucessoMsg && (
-          <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded-xl animate-bounce">
-            {sucessoMsg}
-          </div>
-        )}
+    <div className="space-y-8 max-w-[1600px] mx-auto font-sans pb-12">
+      {/* ================= CABEÇALHO (FIGMA) ================= */}
+      <div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          Nova ordem de serviço
+        </h2>
+        <p className="text-xs text-zinc-400 mt-1">
+          Registre o atendimento e gere a via de entrada para o cliente.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* SELETOR DE GARANTIA */}
-        <div className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-bold text-white">
-              Cobertura de Garantia para este Atendimento
-            </h3>
-            <p className="text-zinc-400">
-              Serviços sem garantia ocultam botões de impressão e bloqueiam emissão de termos.
-            </p>
+        {/* ================= CARD TOPO: COBERTURA ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">Cobertura deste atendimento</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">Define os termos e o controle de retorno da ordem.</p>
+            </div>
           </div>
-          <div className="flex items-center space-x-2 bg-zinc-950 p-1.5 border border-zinc-800 rounded-xl">
+
+          <div className="flex items-center bg-[#080c14] border border-zinc-800 rounded-xl p-1 shrink-0">
             <button
               type="button"
               onClick={() => setPossuiGarantia(true)}
-              className={`px-4 py-2 rounded-lg font-bold transition ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
                 possuiGarantia
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "text-zinc-400 hover:text-white"
+                  ? 'bg-emerald-500 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              Com Garantia
+              Com garantia
             </button>
             <button
               type="button"
               onClick={() => setPossuiGarantia(false)}
-              className={`px-4 py-2 rounded-lg font-bold transition ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
                 !possuiGarantia
-                  ? "bg-amber-600 text-white shadow-md"
-                  : "text-zinc-400 hover:text-white"
+                  ? 'bg-zinc-800 text-white shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              Sem Garantia
+              Sem garantia
             </button>
           </div>
         </div>
 
-        {/* ETAPA 1: CLIENTE E APARELHO */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Dados do Cliente */}
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-blue-400">1. Dados do Cliente</h3>
+        {/* ================= CARD 01 (CLIENTE) + CARD 02 (APARELHO E DATAS) ================= */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 01: CLIENTE */}
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2.5 pb-2 border-b border-zinc-800/60">
+                <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 text-xs font-extrabold flex items-center justify-center">
+                  01
+                </span>
+                <h3 className="text-sm font-bold text-white">Cliente</h3>
+              </div>
 
-            <div>
-              <label className="text-zinc-400 block mb-1">
-                Selecionar Cliente Cadastrado
-              </label>
-              <select
-                value={idClienteSelecionado}
-                onChange={handleSelecionarCliente}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-              >
-                <option value="">Ou selecione da base de cadastros...</option>
-                {listaClientes.map((c) => (
-                  <option key={c.id_cliente} value={c.id_cliente}>
-                    {c.nome} — {c.whatsapp || "Sem WhatsApp"}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-zinc-400 block mb-1">Nome Completo *</label>
-              <input
-                type="text"
-                required
-                placeholder="Nome do cliente..."
-                value={nomeCliente}
-                onChange={(e) => setNomeCliente(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-zinc-400 block mb-1">WhatsApp</label>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  SELECIONAR CLIENTE CADASTRADO
+                </label>
+                <select
+                  value={idClienteSelecionado}
+                  onChange={handleSelecionarCliente}
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
+                >
+                  <option value="">Buscar na base de clientes...</option>
+                  {listaClientes.map((c) => (
+                    <option key={c.id_cliente || c.id} value={c.id_cliente || c.id}>
+                      {c.nome} {c.whatsapp ? `(${c.whatsapp})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  NOME COMPLETO *
+                </label>
                 <input
                   type="text"
-                  placeholder="(85) 99999-9999"
-                  value={whatsappCliente}
-                  onChange={(e) => setWhatsappCliente(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                  required
+                  value={nomeCliente}
+                  onChange={(e) => setNomeCliente(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
                 />
               </div>
-              <div>
-                <label className="text-zinc-400 block mb-1">CPF / CNPJ</label>
-                <input
-                  type="text"
-                  placeholder="Opcional..."
-                  value={cpfCnpjCliente}
-                  onChange={(e) => setCpfCnpjCliente(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    WHATSAPP *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={whatsappCliente}
+                    onChange={(e) => setWhatsappCliente(e.target.value)}
+                    placeholder="(85) 99999-9999"
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    CPF / CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    value={cpfCnpjCliente}
+                    onChange={(e) => setCpfCnpjCliente(e.target.value)}
+                    placeholder="Opcional"
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Dados do Aparelho */}
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-amber-400">2. Aparelho & Datas</h3>
+          {/* CARD 02: APARELHO E DATAS */}
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2.5 pb-2 border-b border-zinc-800/60">
+                <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 text-xs font-extrabold flex items-center justify-center">
+                  02
+                </span>
+                <h3 className="text-sm font-bold text-white">Aparelho e datas</h3>
+              </div>
 
-            {/* AUTOCOMPLETE DO APARELHO */}
-            <div className="relative">
-              <label className="text-zinc-400 block mb-1">Modelo do Aparelho *</label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: iPhone 13, Samsung S22..."
-                value={modeloAparelho}
-                onChange={handleDigitarModelo}
-                onBlur={() => setTimeout(() => setSugestoesAparelho([]), 200)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  MODELO DO APARELHO *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modeloAparelho}
+                  onChange={(e) => setModeloAparelho(e.target.value)}
+                  placeholder="Ex.: iPhone 13, Samsung S22"
+                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+                />
+              </div>
 
-              {sugestoesAparelho.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-zinc-800">
-                  {sugestoesAparelho.map((modelo, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => {
-                        setModeloAparelho(modelo);
-                        setSugestoesAparelho([]);
-                      }}
-                      className="w-full text-left px-3 py-2 text-zinc-200 hover:bg-blue-600/30 hover:text-white transition text-xs"
-                    >
-                      {modelo}
-                    </button>
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    IMEI / NÚMERO DE SÉRIE
+                  </label>
+                  <input
+                    type="text"
+                    value={imeiAparelho}
+                    onChange={(e) => setImeiAparelho(e.target.value)}
+                    placeholder="Opcional"
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+                  />
                 </div>
-              )}
-            </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    SENHA DE DESBLOQUEIO
+                  </label>
+                  <input
+                    type="text"
+                    value={senhaAparelho}
+                    onChange={(e) => setSenhaAparelho(e.target.value)}
+                    placeholder="PIN ou padrão"
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-zinc-400 block mb-1">IMEI / Nº de Série</label>
-                <input
-                  type="text"
-                  placeholder="Opcional..."
-                  value={imeiAparelho}
-                  onChange={(e) => setImeiAparelho(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-zinc-400 block mb-1">Senha de Desbloqueio</label>
-                <input
-                  type="text"
-                  placeholder="PIN / Padrão..."
-                  value={senhaAparelho}
-                  onChange={(e) => setSenhaAparelho(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-zinc-400 block mb-1">Data de Abertura</label>
-                <input
-                  type="date"
-                  value={dataAbertura}
-                  onChange={(e) => setDataAbertura(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-zinc-400 block mb-1">Previsão de Entrega</label>
-                <input
-                  type="date"
-                  value={dataPrevista}
-                  onChange={(e) => setDataPrevista(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    DATA DE ABERTURA
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={dataAbertura}
+                    onChange={(e) => setDataAbertura(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    PREVISÃO DE ENTREGA
+                  </label>
+                  <input
+                    type="date"
+                    value={dataPrevista}
+                    onChange={(e) => setDataPrevista(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ETAPA 2: SERVIÇO E ORÇAMENTO */}
-        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-4">
-          <h3 className="text-sm font-bold text-emerald-400">
-            3. Serviço, Diagnóstico & Custos
-          </h3>
+        {/* ================= CARD 03: SERVIÇO, DIAGNÓSTICO E CUSTOS (FIGMA) ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-5 shadow-sm">
+          <div className="flex items-center space-x-2.5 pb-2 border-b border-zinc-800/60">
+            <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 text-xs font-extrabold flex items-center justify-center">
+              03
+            </span>
+            <h3 className="text-sm font-bold text-white">Serviço, diagnóstico e custos</h3>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
-              <label className="text-zinc-400 block mb-1">Serviço Padrão (Opcional)</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                SERVIÇO PADRÃO
+              </label>
               <select
-                value={servicoSelecionadoId}
+                value={servicoPadraoId}
                 onChange={handleSelecionarServico}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
               >
                 <option value="">Selecione da base de serviços...</option>
                 {listaServicos.map((s) => (
-                  <option key={s.id_servico} value={s.id_servico}>
-                    {s.nome} (Sugerido: R$ {Number(s.preco_sugerido || 0).toFixed(2)})
+                  <option key={s.id_servico || s.id} value={s.id_servico || s.id}>
+                    {s.nome} {s.preco_sugerido ? `- R$ ${Number(s.preco_sugerido).toFixed(2)}` : ''}
                   </option>
                 ))}
               </select>
             </div>
-
-            <div className="md:col-span-2">
-              <label className="text-zinc-400 block mb-1">
-                Defeito Relatado / Descrição do Serviço *
+            <div className="lg:col-span-2">
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                DEFEITO RELATADO / DESCRIÇÃO DO SERVIÇO *
               </label>
               <input
                 type="text"
                 required
-                placeholder="Ex: Troca de Tela Frontal..."
                 value={defeitoRelatado}
                 onChange={(e) => setDefeitoRelatado(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                placeholder="Ex.: troca de tela frontal"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-zinc-400 block mb-1">Diagnóstico Técnico</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                DIAGNÓSTICO TÉCNICO
+              </label>
               <input
                 type="text"
-                placeholder="Ex: Display quebrado sem imagem..."
                 value={diagnostico}
                 onChange={(e) => setDiagnostico(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                placeholder="Ex.: display quebrado, sem imagem"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
               />
             </div>
             <div>
-              <label className="text-zinc-400 block mb-1">Observações Internas</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                OBSERVAÇÕES INTERNAS
+              </label>
               <input
                 type="text"
-                placeholder="Ex: Aparelho sem gaveta de chip..."
                 value={observacoes}
                 onChange={(e) => setObservacoes(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                placeholder="Ex.: aparelho sem gaveta de chip"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
 
-          {/* Custos e Valores */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 pt-2 border-t border-zinc-800">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
             <div>
-              <label className="text-zinc-400 block mb-1">Custo da Peça (R$)</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                CUSTO DA PEÇA
+              </label>
               <input
                 type="number"
                 step="0.01"
-                placeholder="0.00"
                 value={custoPeca}
-                onChange={(e) =>
-                  setCustoPeca(e.target.value === "" ? "" : Number(e.target.value))
-                }
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                onChange={(e) => setCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="0.00"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
               />
             </div>
+
             <div>
-              <label className="text-zinc-400 block mb-1">Frete Real (R$)</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                FRETE REAL
+              </label>
               <input
                 type="number"
                 step="0.01"
-                placeholder="0.00"
                 value={freteReal}
-                onChange={(e) =>
-                  setFreteReal(e.target.value === "" ? "" : Number(e.target.value))
-                }
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                onChange={(e) => setFreteReal(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="0.00"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
               />
             </div>
+
             <div>
-              <label className="text-zinc-400 block mb-1">Fornecedor da Peça</label>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                FORNECEDOR
+              </label>
               <select
                 value={fornecedorPeca}
                 onChange={(e) => setFornecedorPeca(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white outline-none focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
               >
-                <option value="">Selecione o fornecedor...</option>
+                <option value="">Selecione...</option>
                 {listaFornecedores.map((f) => (
-                  <option key={f.id_fornecedor} value={f.nome}>
+                  <option key={f.id_fornecedor || f.id} value={f.nome}>
                     {f.nome}
                   </option>
                 ))}
@@ -511,106 +578,274 @@ export const NovaOS: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-zinc-400 block mb-1 font-bold text-amber-400">
-                Forma de Pagto *
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                TIPO DE DESCONTO
               </label>
               <select
-                value={formaPagamento}
-                onChange={(e) => {
-                  setFormaPagamento(e.target.value);
-                  if (e.target.value !== "Cartão de Crédito") {
-                    setParcelas(1);
-                    setValorLiquido("");
-                  }
-                }}
-                className="w-full bg-zinc-950 border border-amber-500/50 rounded-xl p-2.5 text-amber-400 font-bold outline-none focus:border-amber-500"
+                value={tipoDesconto}
+                onChange={(e) => setTipoDesconto(e.target.value as any)}
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
               >
-                <option value="PIX">PIX</option>
-                <option value="Dinheiro">Dinheiro</option>
-                <option value="Cartão de Débito">Cartão de Débito</option>
-                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="VALOR">Valor (R$)</option>
+                <option value="PERCENTUAL">Porcentagem (%)</option>
               </select>
             </div>
 
-            {/* SE FOR CARTÃO DE CRÉDITO: Exibe Parcelas */}
-            {formaPagamento === "Cartão de Crédito" && (
-              <div>
-                <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
-                  Parcelas
-                </label>
-                <select
-                  value={parcelas}
-                  onChange={(e) => {
-                    const p = Number(e.target.value);
-                    setParcelas(p);
-                    if (p > 3) setValorLiquido("");
-                  }}
-                  className="w-full bg-zinc-950 border border-blue-500/50 rounded-xl p-2.5 text-blue-400 font-bold outline-none focus:border-blue-500"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
-                    <option key={num} value={num}>
-                      {num}x {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* SE FOR CARTÃO DE CRÉDITO EM ATÉ 3X: Exibe Valor Líquido */}
-            {formaPagamento === "Cartão de Crédito" && parcelas <= 3 && (
-              <div>
-                <label className="text-zinc-400 block mb-1 font-bold text-purple-400">
-                  Valor Líquido (R$) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="Ex: 232.00"
-                  value={valorLiquido}
-                  onChange={(e) =>
-                    setValorLiquido(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  className="w-full bg-zinc-950 border border-purple-500/50 rounded-xl p-2.5 text-purple-400 font-bold outline-none focus:border-purple-500"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                DESCONTO AO CLIENTE
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={descontoCliente}
+                onChange={(e) => setDescontoCliente(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="0.00"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+              />
+            </div>
 
             <div>
-              <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">
-                Valor Cobrado (R$) *
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                VALOR DO SERVIÇO *
               </label>
               <input
                 type="number"
                 step="0.01"
                 required
+                value={valorServico}
+                onChange={(e) => setValorServico(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="0.00"
-                value={valorTotalOrcamento}
-                onChange={(e) =>
-                  setValorTotalOrcamento(
-                    e.target.value === "" ? "" : Number(e.target.value),
-                  )
-                }
-                className="w-full bg-zinc-950 border border-emerald-500/50 rounded-xl p-2.5 text-emerald-400 font-bold outline-none focus:border-emerald-500"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-bold outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                FORMA DE PAGAMENTO *
+              </label>
+              <select
+                value={formaPagamento}
+                onChange={(e) => setFormaPagamento(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
+              >
+                <option value="Cartão de crédito">Cartão de crédito</option>
+                <option value="Cartão de débito">Cartão de débito</option>
+                <option value="PIX">PIX</option>
+                <option value="Dinheiro">Dinheiro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                QUANTIDADE DE PARCELAS
+              </label>
+              <select
+                value={parcelas}
+                onChange={(e) => setParcelas(Number(e.target.value))}
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
+              >
+                {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
+                  <option key={p} value={p}>
+                    {p}x {p === 1 ? '(sem juros)' : '(sem juros)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                TAXA DA MAQUINETA (%)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={taxaMaquinetaPercentual}
+                onChange={(e) => setTaxaMaquinetaPercentual(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="0.00"
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                LÍQUIDO RECEBIDO (APÓS TAXA)
+              </label>
+              <div className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs font-bold text-emerald-400">
+                R$ {liquidoRecebido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+
+          {/* ================= QUADRO DE RESUMO FINANCEIRO (FIGMA) ================= */}
+          <div className="bg-[#080c14] border border-zinc-800/80 rounded-xl p-4 mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
+              <div>
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+                  PREÇO DO SERVIÇO
+                </span>
+                <p className="text-base font-bold text-white">
+                  R$ {numPrecoServico.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+                  DESCONTO CONCEDIDO
+                </span>
+                <p className="text-base font-bold text-rose-400">
+                  - R$ {descontoCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+                  VALOR COBRADO
+                </span>
+                <p className="text-base font-bold text-white">
+                  R$ {valorCobrado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+                  TAXA DA MAQUINETA
+                </span>
+                <p className="text-base font-bold text-rose-400">
+                  - R$ {valorTaxaMaquineta.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+                  LUCRO ESTIMADO
+                </span>
+                <p className="text-base font-black text-emerald-400">
+                  R$ {lucroEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-zinc-400 text-center mt-3 pt-3 border-t border-zinc-800/60 font-medium">
+              Lucro estimado = valor líquido recebido − custo da peça − frete. O desconto ao cliente e a taxa da maquineta são registrados separadamente.
+            </p>
+          </div>
         </div>
 
-        <div className="flex justify-end pt-4">
+        {/* ================= CHECKLIST EXPANSÍVEL ================= */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm">
+          <button
+            type="button"
+            onClick={() => setMostrarChecklist(!mostrarChecklist)}
+            className="w-full p-4 flex items-center justify-between text-xs font-bold text-zinc-300 hover:text-white transition"
+          >
+            <div className="flex items-center space-x-2">
+              <span className="w-5 h-5 rounded-md bg-blue-600/20 text-blue-400 flex items-center justify-center text-[11px]">✓</span>
+              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter(v => v === 'OK').length}/12 OK)</span>
+            </div>
+            <span className="text-zinc-400 font-mono text-sm">{mostrarChecklist ? '▲' : '▼'}</span>
+          </button>
+
+          {mostrarChecklist && (
+            <div className="p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
+              {Object.entries(labelsChecklist).map(([chave, rotulo]) => (
+                <div key={chave}>
+                  <label className="block text-[11px] font-medium text-zinc-400 mb-1">{rotulo}</label>
+                  <select
+                    value={checklist[chave] || 'OK'}
+                    onChange={(e) => setChecklist({ ...checklist, [chave]: e.target.value })}
+                    className="w-full px-3 py-1.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
+                  >
+                    <option value="OK">OK</option>
+                    <option value="DEFEITO">DEFEITO</option>
+                    <option value="Com observação">Com observação</option>
+                    <option value="NÃO TESTADO">NÃO TESTADO</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ================= BOTÕES INFERIORES (FIGMA) ================= */}
+        <div className="flex items-center justify-end space-x-3.5 pt-2">
+          <button
+            type="button"
+            onClick={handleLimparFormulario}
+            className="px-5 py-2.5 bg-transparent border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold transition"
+          >
+            Salvar rascunho
+          </button>
+
           <button
             type="submit"
             disabled={carregando}
-            className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center space-x-2"
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-blue-600/25 flex items-center space-x-2"
           >
             {carregando ? (
-              <span>Cadastrando...</span>
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Registrando ordem...</span>
+              </>
             ) : (
-              <span>💾 Salvar e Gerar Ordem de Serviço</span>
+              <span>Criar ordem de serviço</span>
             )}
           </button>
         </div>
       </form>
+
+      {/* ================= MODAL: SUCESSO ================= */}
+      {osCriadaSucesso && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b0f19] border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl text-center space-y-5">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-2xl mx-auto shadow-lg shadow-emerald-500/10">
+              ✓
+            </div>
+
+            <div>
+              <h3 className="text-xl font-extrabold text-white">Ordem Criada com Sucesso!</h3>
+              <p className="text-blue-400 font-mono font-bold text-base mt-1">
+                {osCriadaSucesso.numeroOs}
+              </p>
+              <p className="text-xs text-zinc-400 mt-2">
+                A ordem de serviço foi registrada e vinculada com sucesso.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button
+                onClick={() => setOsParaImprimir(osCriadaSucesso.dadosCompletos)}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow-md"
+              >
+                <span>Imprimir Comprovante / PDF</span>
+              </button>
+
+              <button
+                onClick={handleLimparFormulario}
+                className="w-full py-2.5 bg-[#0e1320] hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-semibold rounded-xl text-xs transition"
+              >
+                Cadastrar outra ordem
+              </button>
+
+              {onNavigate && (
+                <button
+                  onClick={() => onNavigate('historico')}
+                  className="w-full py-2 text-zinc-400 hover:text-white text-xs transition"
+                >
+                  Ver todas as ordens de serviço &rarr;
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Impressão de Comprovante */}
+      {osParaImprimir && (
+        <CertidaoGarantia os={osParaImprimir} onClose={() => setOsParaImprimir(null)} />
+      )}
     </div>
   );
 };

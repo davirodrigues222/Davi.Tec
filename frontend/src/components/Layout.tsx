@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { fazerLogout } from '../services/api';
 
 interface Props {
   children: React.ReactNode;
   activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros';
   setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  session?: any;
 }
 
-export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) => {
+export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, session }) => {
+  // Dados da Assistência Técnica do Cliente (ex: Sampaio Cell)
   const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
-  const [subtitulo, setSubtitulo] = useState<string>('Gestão Técnica Especializada');
+  const [subtitulo, setSubtitulo] = useState<string>('Assistência Técnica');
   const [logoUrl, setLogoUrl] = useState<string>('');
-  const [temaVisual, setTemaVisual] = useState<'dark' | 'midnight' | 'light'>('dark');
 
   const carregarConfigs = () => {
     const saved = localStorage.getItem('sig_apple_configs');
@@ -20,157 +22,296 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab }) =
         if (parsed.nomeLoja) setNomeLoja(parsed.nomeLoja);
         if (parsed.subtitulo) setSubtitulo(parsed.subtitulo);
         if (parsed.logoUrl) setLogoUrl(parsed.logoUrl);
-        if (parsed.temaVisual) setTemaVisual(parsed.temaVisual);
       } catch (e) {
-        console.error(e);
+        console.error('Erro ao ler configs salvas:', e);
       }
+    }
+
+    if (session?.user?.user_metadata?.nome_assistencia) {
+      setNomeLoja(session.user.user_metadata.nome_assistencia);
     }
   };
 
   useEffect(() => {
     carregarConfigs();
+
     window.addEventListener('storage_configs_updated', carregarConfigs);
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
-  }, []);
+  }, [session]);
 
-  const temasEstilos = {
-    dark: {
-      appBg: 'bg-zinc-950 text-zinc-100',
-      sidebar: 'bg-zinc-900 border-zinc-800',
-      header: 'bg-zinc-900 border-zinc-800 text-zinc-100',
-      navHover: 'hover:bg-zinc-800/60 hover:text-white text-zinc-400',
-      activeTab: 'bg-blue-600 text-white shadow-md shadow-blue-600/20',
-    },
-    midnight: {
-      appBg: 'bg-slate-950 text-slate-100',
-      sidebar: 'bg-slate-900 border-slate-800',
-      header: 'bg-slate-900 border-slate-800 text-slate-100',
-      navHover: 'hover:bg-slate-800/60 hover:text-white text-slate-400',
-      activeTab: 'bg-blue-600 text-white shadow-md shadow-blue-600/20',
-    },
-    light: {
-      appBg: 'bg-gray-100 text-gray-900',
-      sidebar: 'bg-white border-gray-200 shadow-sm',
-      header: 'bg-white border-gray-200 text-gray-900',
-      navHover: 'hover:bg-gray-100 hover:text-gray-900 text-gray-600',
-      activeTab: 'bg-blue-600 text-white shadow-md shadow-blue-600/20',
-    },
+  const handleLogout = async () => {
+    try {
+      await fazerLogout();
+    } catch (err) {
+      console.error('Erro ao sair:', err);
+    }
   };
 
-  const estiloAtual = temasEstilos[temaVisual] || temasEstilos.dark;
+  const userName = session?.user?.user_metadata?.nome_responsavel || 'Davi Sampaio';
+  const userInitials = userName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n: string) => n[0].toUpperCase())
+    .join('') || 'DS';
+
+  const titulosAbas: Record<string, string> = {
+    dashboard: 'Painel',
+    relatorios: 'Análises e relatórios',
+    historico: 'Ordens de serviço',
+    'nova-os': 'Nova ordem',
+    'garantia-retorno': 'Garantias e retornos',
+    cadastros: 'Cadastros',
+    configuracoes: 'Configurações',
+  };
 
   return (
-    <div className={`min-h-screen flex print:bg-white print:text-black transition-colors duration-300 ${estiloAtual.appBg}`}>
-      {/* Sidebar com largura aumentada para w-80 */}
-      <aside className={`w-80 border-r flex flex-col print:hidden transition-colors duration-300 ${estiloAtual.sidebar}`}>
-        <div className="p-6 border-b border-inherit">
-          <div className="flex items-center space-x-3">
-            {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="w-12 h-12 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800" />
-            ) : (
-              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30 text-base">
-                SC
+    <div className="min-h-screen flex bg-[#070a12] text-zinc-100 font-sans print:bg-white print:text-black">
+      {/* ================= BARRA LATERAL (MONTEC SYSTEM) ================= */}
+      <aside className="w-80 min-w-[20rem] border-r border-zinc-800/60 bg-[#090d15] flex flex-col justify-between print:hidden">
+        <div>
+          {/* Topo da Sidebar: Plataforma Montec System com a Logo Oficial */}
+          <div className="p-6 border-b border-zinc-800/40">
+            <div className="flex items-center space-x-3.5">
+              {/* Logo Oficial Montec System */}
+              <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
+                <img
+                  src="/logo-montec.png"
+                  alt="Montec System"
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#090d15]" />
               </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <h1 className="font-bold text-base truncate leading-tight">{nomeLoja}</h1>
-              <p className="text-[11px] opacity-70 truncate">{subtitulo}</p>
+
+              <div className="flex-1 min-w-0">
+                <h1 className="font-extrabold text-base sm:text-lg truncate tracking-tight text-white leading-tight">
+                  Montec System
+                </h1>
+                <p className="text-xs text-blue-400 truncate mt-0.5 font-semibold">
+                  Software de Gestão
+                </p>
+              </div>
             </div>
           </div>
+
+          {/* Navegação */}
+          <nav className="p-4 space-y-6">
+            <div>
+              <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
+                OPERAÇÃO
+              </span>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'dashboard'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
+                    <span>Painel</span>
+                  </div>
+                  {activeTab === 'dashboard' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('relatorios')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'relatorios'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <span>Análises e relatórios</span>
+                  </div>
+                  {activeTab === 'relatorios' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('historico')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'historico'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Ordens de serviço</span>
+                  </div>
+                  {activeTab === 'historico' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('nova-os')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'nova-os'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Nova ordem</span>
+                  </div>
+                  {activeTab === 'nova-os' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('garantia-retorno')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'garantia-retorno'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    <span>Garantias e retornos</span>
+                  </div>
+                  {activeTab === 'garantia-retorno' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
+                ADMINISTRAÇÃO
+              </span>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setActiveTab('cadastros')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'cadastros'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                    <span>Cadastros</span>
+                  </div>
+                  {activeTab === 'cadastros' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('configuracoes')}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'configuracoes'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Configurações</span>
+                  </div>
+                  {activeTab === 'configuracoes' && (
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </nav>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1.5">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'dashboard' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">📊</span>
-            <span>Dashboard</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('relatorios')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'relatorios' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">📈</span>
-            <span>Análises & Relatórios</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('historico')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'historico' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">📋</span>
-            <span>Histórico de Serviços</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('nova-os')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'nova-os' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">➕</span>
-            <span>Nova Ordem de Serviço</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('garantia-retorno')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'garantia-retorno' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">⚠️</span>
-            <span>Garantia / Retorno</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('cadastros')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'cadastros' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">📁</span>
-            <span>Cadastros</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('configuracoes')}
-            className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-xs font-bold transition ${
-              activeTab === 'configuracoes' ? estiloAtual.activeTab : estiloAtual.navHover
-            }`}
-          >
-            <span className="text-sm">⚙️</span>
-            <span>Configurações</span>
-          </button>
-        </nav>
-
-        <div className="p-4 border-t border-inherit text-xs opacity-60 text-center">
-          Servidor: <span className="text-emerald-500 font-mono">http://localhost:3000</span>
+        {/* Rodapé: Operador Logado */}
+        <div className="p-4 border-t border-zinc-800/60">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3 overflow-hidden min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center text-xs font-extrabold text-white shrink-0 shadow-sm">
+                {userInitials}
+              </div>
+              <div className="truncate min-w-0">
+                <p className="text-xs font-bold text-white truncate">{userName}</p>
+                <p className="text-[11px] text-zinc-400 truncate">Administrador</p>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Desconectar do sistema"
+              className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition shrink-0 ml-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Área Principal */}
+      {/* ================= ÁREA DE CONTEÚDO PRINCIPAL ================= */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className={`h-16 border-b flex items-center justify-between px-8 print:hidden transition-colors duration-300 ${estiloAtual.header}`}>
-          <div className="flex items-center space-x-2 text-xs opacity-70">
-            <span>{nomeLoja}</span>
-            <span>/</span>
-            <span className="font-bold capitalize">{activeTab.replace('-', ' ')}</span>
+        {/* Cabeçalho Superior */}
+        <header className="h-16 border-b border-zinc-800/60 bg-[#090d15]/80 backdrop-blur-md flex items-center justify-between px-8 print:hidden">
+          {/* Breadcrumb Montec System */}
+          <div className="flex items-center space-x-2 text-xs text-zinc-400 font-medium">
+            <span className="font-bold text-zinc-300">Montec System</span>
+            <span className="text-zinc-600">/</span>
+            <span className="font-bold text-white">{titulosAbas[activeTab] || 'Painel'}</span>
           </div>
-          <div className="flex items-center space-x-3">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-medium opacity-80">API Conectada</span>
+
+          {/* Topo Direito: Identidade da Assistência Técnica do Cliente */}
+          <div className="flex items-center space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-3.5 py-1.5 shadow-sm">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={nomeLoja}
+                className="w-8 h-8 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800 shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
+                {nomeLoja.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="text-left pr-1 min-w-0">
+              <div className="flex items-center space-x-2">
+                <h4 className="text-xs font-bold text-white truncate leading-tight max-w-[180px]">
+                  {nomeLoja}
+                </h4>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Assistência Conectada" />
+              </div>
+              <p className="text-[10px] text-zinc-400 truncate mt-0.5 max-w-[180px] font-medium">
+                {subtitulo}
+              </p>
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-y-auto print:p-0">{children}</main>
+        <main className="flex-1 p-8 overflow-y-auto print:p-0">
+          {children}
+        </main>
       </div>
     </div>
   );

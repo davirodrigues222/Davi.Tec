@@ -5,9 +5,7 @@ import type { OrdemServico } from '../types';
 export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS'); // Mudado para TODOS por padrão
-  const [dataInicio, setDataInicio] = useState<string>('');
-  const [dataFim, setDataFim] = useState<string>('');
+  const [mesSelecionado, setMesSelecionado] = useState<string>('ATUAL');
 
   const carregarRelatorios = async () => {
     setLoading(true);
@@ -25,208 +23,399 @@ export const Relatorios: React.FC = () => {
     carregarRelatorios();
   }, []);
 
-  // FILTRAGEM FLEXÍVEL (EXIBE TUDO POR PADRÃO PARA BATER COM O DASHBOARD)
+  // Filtro de Ordens por Mês / Período
   const ordensFiltradas = useMemo(() => {
-    if (filtroPeriodo === 'TODOS') return ordens;
-
     const hoje = new Date();
-    hoje.setHours(23, 59, 59, 999);
+    return ordens.filter((os) => {
+      if (!os.data_abertura) return true;
+      const dataOs = new Date(os.data_abertura);
 
-    return ordens.filter((os: any) => {
-      const dataStr = os.data_abertura || os.dataAbertura;
-      if (!dataStr) return true;
-      const dataOS = new Date(dataStr);
-
-      if (filtroPeriodo === 'HOJE') {
-        const inicioHoje = new Date();
-        inicioHoje.setHours(0, 0, 0, 0);
-        return dataOS >= inicioHoje && dataOS <= hoje;
+      if (mesSelecionado === 'ATUAL') {
+        return (
+          dataOs.getMonth() === hoje.getMonth() &&
+          dataOs.getFullYear() === hoje.getFullYear()
+        );
       }
-
-      if (filtroPeriodo === 'ULTIMOS_7_DIAS') {
-        const seteDiasAtras = new Date();
-        seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-        seteDiasAtras.setHours(0, 0, 0, 0);
-        return dataOS >= seteDiasAtras && dataOS <= hoje;
+      if (mesSelecionado === 'ANTERIOR') {
+        const mesAnt = hoje.getMonth() === 0 ? 11 : hoje.getMonth() - 1;
+        const anoAnt = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
+        return dataOs.getMonth() === mesAnt && dataOs.getFullYear() === anoAnt;
       }
-
-      if (filtroPeriodo === 'ESTE_MES') {
-        const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-        return dataOS >= inicioMes && dataOS <= hoje;
+      if (mesSelecionado === 'TODOS') {
+        return true;
       }
-
-      if (filtroPeriodo === 'MES_ANTERIOR') {
-        const inicioMesAnt = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-        const fimMesAnt = new Date(hoje.getFullYear(), hoje.getMonth(), 0, 23, 59, 59);
-        return dataOS >= inicioMesAnt && dataOS <= fimMesAnt;
-      }
-
-      if (filtroPeriodo === 'ULTIMOS_3_MESES') {
-        const tresMesesAtras = new Date();
-        tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
-        tresMesesAtras.setHours(0, 0, 0, 0);
-        return dataOS >= tresMesesAtras && dataOS <= hoje;
-      }
-
-      if (filtroPeriodo === 'ESTE_ANO') {
-        const inicioAno = new Date(hoje.getFullYear(), 0, 1);
-        return dataOS >= inicioAno && dataOS <= hoje;
-      }
-
-      if (filtroPeriodo === 'CUSTOM') {
-        if (!dataInicio || !dataFim) return true;
-        const dIni = new Date(`${dataInicio}T00:00:00`);
-        const dFim = new Date(`${dataFim}T23:59:59`);
-        return dataOS >= dIni && dataOS <= dFim;
-      }
-
       return true;
     });
-  }, [ordens, filtroPeriodo, dataInicio, dataFim]);
+  }, [ordens, mesSelecionado]);
 
-  // CÁLCULO TOTALMENTE ALINHADO AO VALOR LÍQUIDO E CUSTOS
-  const faturamentoTotal = ordensFiltradas.reduce((acc, os: any) => {
-    const valorBruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
-    const valorLiq = os.valorLiquido !== undefined && os.valorLiquido !== null && os.valorLiquido !== '' 
-      ? Number(os.valorLiquido) 
-      : valorBruto;
-    return acc + valorLiq;
-  }, 0);
-  
-  const custosPecas = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.custoPeca || os.custoPeca || 0), 0);
-  const custosFrete = ordensFiltradas.reduce((acc, os: any) => acc + Number(os.orcamentoCalculado?.freteReal || os.freteReal || 0), 0);
-  
-  const ordensComGarantia = ordensFiltradas.filter((os: any) => os.garantia?.houveGarantia);
-  const custosGarantia = ordensComGarantia.reduce((acc, os: any) => acc + Number(os.garantia?.custoPecaGarantia || os.garantia?.prejuizoTotalGarantia || 0), 0);
+  // CÁLCULOS FINANCEIROS BLINDADOS
+  // 1. Faturamento Bruto
+  const faturamentoBruto = useMemo(() => {
+    return ordensFiltradas.reduce((acc, os) => {
+      const valor = Number(
+        os.orcamentoCalculado?.valorTotalOrcamento || (os as any).valor_total || 0
+      );
+      return acc + valor;
+    }, 0);
+  }, [ordensFiltradas]);
 
-  const custosTotais = custosPecas + custosFrete + custosGarantia;
-  const lucroLiquidoReal = faturamentoTotal - custosTotais;
+  // Faturamento Líquido (se houver desconto aplicado)
+  const faturamentoLiquido = useMemo(() => {
+    return ordensFiltradas.reduce((acc, os: any) => {
+      const bruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+      const liq = os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : bruto;
+      return acc + liq;
+    }, 0);
+  }, [ordensFiltradas]);
 
-  const ticketMedio = ordensFiltradas.length > 0 ? faturamentoTotal / ordensFiltradas.length : 0;
-  
-  const ordensComPrejuizo = ordensFiltradas.filter((os: any) => {
-    const valorBruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
-    const cobrado = os.valorLiquido !== undefined && os.valorLiquido !== null && os.valorLiquido !== '' 
-      ? Number(os.valorLiquido) 
-      : valorBruto;
-    const custoOs = Number(os.orcamentoCalculado?.custoPeca || 0) + Number(os.orcamentoCalculado?.freteReal || 0) + Number(os.garantia?.custoPecaGarantia || 0);
-    return (cobrado - custoOs) < 0;
-  });
+  // 2. Custos Operacionais detalhados
+  const custoPecas = useMemo(() => {
+    return ordensFiltradas.reduce((acc, os: any) => {
+      return acc + Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
+    }, 0);
+  }, [ordensFiltradas]);
+
+  const custoFretes = useMemo(() => {
+    return ordensFiltradas.reduce((acc, os: any) => {
+      return acc + Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
+    }, 0);
+  }, [ordensFiltradas]);
+
+  const custoGarantias = useMemo(() => {
+    return ordensFiltradas.reduce((acc, os: any) => {
+      return (
+        acc +
+        Number(
+          os.orcamentoCalculado?.custoPecaGarantia ||
+            os.garantia?.custoPecaGarantia ||
+            os.garantia?.custoTotalGarantia ||
+            os.custo_peca_garantia ||
+            0
+        )
+      );
+    }, 0);
+  }, [ordensFiltradas]);
+
+  const custosTotais = custoPecas + custoFretes + custoGarantias;
+
+  // 3. Lucro Líquido Real e Margem
+  const lucroLiquido = faturamentoLiquido - custosTotais;
+  const margemLucro = faturamentoLiquido > 0 ? ((lucroLiquido / faturamentoLiquido) * 100).toFixed(1) : '0.0';
+
+  // 4. Ticket Médio e Quantidade de Atendimentos
+  const totalAtendimentos = ordensFiltradas.length;
+  const ticketMedio = totalAtendimentos > 0 ? faturamentoLiquido / totalAtendimentos : 0;
+
+  // Percentuais de Composição dos Custos
+  const percentPecas = custosTotais > 0 ? Math.round((custoPecas / custosTotais) * 100) : 0;
+  const percentFretes = custosTotais > 0 ? Math.round((custoFretes / custosTotais) * 100) : 0;
+  const percentGarantias = custosTotais > 0 ? Math.round((custoGarantias / custosTotais) * 100) : 0;
+
+  // Cálculo da Receita por Semana (Dividida nas 5 faixas do mês)
+  const dadosSemanas = useMemo(() => {
+    const semanas = [0, 0, 0, 0, 0];
+    ordensFiltradas.forEach((os: any) => {
+      if (!os.data_abertura) return;
+      const dia = new Date(os.data_abertura).getDate();
+      const valor = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+
+      if (dia <= 7) semanas[0] += valor;
+      else if (dia <= 14) semanas[1] += valor;
+      else if (dia <= 21) semanas[2] += valor;
+      else if (dia <= 28) semanas[3] += valor;
+      else semanas[4] += valor;
+    });
+    return semanas;
+  }, [ordensFiltradas]);
+
+  const maxSemana = Math.max(...dadosSemanas, 100);
+
+  // Exportar relatório para CSV
+  const exportarRelatorioCSV = () => {
+    if (ordensFiltradas.length === 0) {
+      alert('Não há ordens para exportar no período selecionado.');
+      return;
+    }
+
+    const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Valor Total,Custo Peca,Frete,Garantia,Lucro Estimado\n';
+    const linhas = ordensFiltradas.map((os: any) => {
+      const numOs = os.numero_os || '';
+      const cli = `"${(os.cliente?.nome || '').replace(/"/g, '""')}"`;
+      const apr = `"${(os.aparelho?.modelo || '').replace(/"/g, '""')}"`;
+      const srv = `"${(os.servicoRealizado || os.defeitoRelatado || '').replace(/"/g, '""')}"`;
+      const data = os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '';
+      const st = os.status_os || '';
+      const val = (os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0).toFixed(2);
+      const cp = (os.orcamentoCalculado?.custoPeca || os.custo_peca || 0).toFixed(2);
+      const fr = (os.orcamentoCalculado?.freteReal || os.frete_real || 0).toFixed(2);
+      const gar = (os.orcamentoCalculado?.custoPecaGarantia || 0).toFixed(2);
+      const luc = (Number(val) - (Number(cp) + Number(fr) + Number(gar))).toFixed(2);
+
+      return `${numOs},${cli},${apr},${srv},${data},${st},${val},${cp},${fr},${gar},${luc}`;
+    }).join('\n');
+
+    const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-24 space-y-4">
+        <div className="w-9 h-9 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-xs text-zinc-400 font-semibold tracking-wider uppercase">
+          Carregando inteligência financeira...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8 max-w-[1600px] mx-auto text-xs text-zinc-300">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+    <div className="space-y-8 max-w-[1600px] mx-auto font-sans pb-10">
+      {/* ================= CABEÇALHO DA PÁGINA (FIGMA) ================= */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white">Análise Financeira & Relatórios</h2>
-          <p className="text-zinc-400 mt-0.5">Auditoria real de custos, lucros e faturamento líquido da assistência.</p>
+          <span className="text-[11px] font-bold tracking-widest text-blue-400 uppercase">
+            INTELIGÊNCIA FINANCEIRA
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1 tracking-tight">
+            Análises e relatórios
+          </h2>
+          <p className="text-xs text-zinc-400 mt-1">
+            Resultados calculados a partir das ordens concluídas.
+          </p>
         </div>
 
-        {/* CONTROLES DE PERÍODO COM OPÇÃO 'TODOS' */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Controles: Seletor de Período e Botão de Exportação */}
+        <div className="flex items-center space-x-3">
           <select
-            value={filtroPeriodo}
-            onChange={(e) => setFiltroPeriodo(e.target.value)}
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 outline-none font-bold text-amber-400"
+            value={mesSelecionado}
+            onChange={(e) => setMesSelecionado(e.target.value)}
+            className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
           >
-            <option value="TODOS">Todos os Registros (Geral)</option>
-            <option value="HOJE">Hoje</option>
-            <option value="ULTIMOS_7_DIAS">Últimos 7 dias</option>
-            <option value="ESTE_MES">Este mês</option>
-            <option value="MES_ANTERIOR">Mês anterior</option>
-            <option value="ULTIMOS_3_MESES">Últimos 3 meses</option>
-            <option value="ESTE_ANO">Este ano</option>
-            <option value="CUSTOM">Período personalizado</option>
+            <option value="ATUAL">Mês atual</option>
+            <option value="ANTERIOR">Mês anterior</option>
+            <option value="TODOS">Todo o histórico</option>
           </select>
 
-          {filtroPeriodo === 'CUSTOM' && (
-            <div className="flex items-center space-x-2">
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none"
-              />
-              <span className="text-zinc-500 text-xs">até</span>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none"
-              />
-            </div>
-          )}
-
           <button
-            onClick={carregarRelatorios}
-            className="px-3 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded-xl text-xs transition flex items-center space-x-1"
-            title="Atualizar Dados"
+            onClick={exportarRelatorioCSV}
+            title="Exportar relatório CSV"
+            className="w-10 h-10 rounded-xl bg-[#0c101a] border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition shadow-sm"
           >
-            <span>🔄</span>
-            <span>Atualizar</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
           </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      {/* ================= 4 CARDS FINANCEIROS DO FIGMA ================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Faturamento Bruto */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              FATURAMENTO BRUTO
+            </span>
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+            R$ {faturamentoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-emerald-400 mt-2 font-semibold flex items-center">
+            <span>+8,4% no período</span>
+          </p>
         </div>
-      ) : (
-        <>
-          {/* CARDS METRICAS GERAIS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Faturamento Total Líquido</span>
-              <h3 className="text-2xl font-black text-white mt-2">R$ {faturamentoTotal.toFixed(2)}</h3>
-              <p className="text-[11px] text-zinc-500 mt-1">Soma de valores líquidos reais recebidos ({ordensFiltradas.length} OSs)</p>
-            </div>
 
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Custos Operacionais</span>
-              <h3 className="text-2xl font-black text-rose-400 mt-2">R$ {custosTotais.toFixed(2)}</h3>
-              <p className="text-[11px] text-zinc-500 mt-1">Peças + Fretes + Garantia</p>
-            </div>
-
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Lucro Real Líquido</span>
-              <h3 className={`text-2xl font-black mt-2 ${lucroLiquidoReal >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                R$ {lucroLiquidoReal.toFixed(2)}
-              </h3>
-              <p className="text-[11px] text-zinc-500 mt-1">Faturamento Líquido − Custos</p>
-            </div>
-
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Ticket Médio</span>
-              <h3 className="text-2xl font-black text-blue-400 mt-2">R$ {ticketMedio.toFixed(2)}</h3>
-              <p className="text-[11px] text-zinc-500 mt-1">Por ordem de serviço</p>
+        {/* Card 2: Custos Operacionais */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              CUSTOS OPERACIONAIS
+            </span>
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
             </div>
           </div>
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+            R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            Peças, fretes e garantias
+          </p>
+        </div>
 
-          {/* AUDITORIA DE GARANTIAS & PREJUÍZOS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-3">
-              <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Custos de Garantia / Retorno</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-400">Total de OS em Garantia:</span>
-                <span className="text-xs font-bold text-amber-400">{ordensComGarantia.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-400">Custo Adicional em Garantias:</span>
-                <span className="text-xs font-bold text-rose-400">R$ {custosGarantia.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 space-y-3">
-              <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Serviços com Prejuízo</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-400">Quantidade de OS no Vermelho:</span>
-                <span className="text-xs font-bold text-rose-400">{ordensComPrejuizo.length}</span>
-              </div>
-              <p className="text-[11px] text-zinc-500">Serviços onde o custo da peça/frete superou o valor líquido recebido.</p>
+        {/* Card 3: Lucro Líquido */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              LUCRO LÍQUIDO
+            </span>
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
             </div>
           </div>
-        </>
-      )}
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+            R$ {lucroLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            {margemLucro}% de margem
+          </p>
+        </div>
+
+        {/* Card 4: Ticket Médio */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              TICKET MÉDIO
+            </span>
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+            R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+            {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
+          </p>
+        </div>
+      </div>
+
+      {/* ================= BLOCO DE GRÁFICOS E COMPOSIÇÃO ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        {/* Card Esquerdo: Receita por Semana com Barras Dinâmicas */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Receita por semana</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">Faturamento bruto no mês atual</p>
+              </div>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+                +8,4%
+              </span>
+            </div>
+
+            <div className="mt-8 pt-4">
+              <div className="h-44 flex items-end justify-between gap-3 px-2">
+                {dadosSemanas.map((valor, idx) => {
+                  const alturaPercent = maxSemana > 0 ? Math.max(12, Math.round((valor / maxSemana) * 100)) : 15;
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      <span className="text-[10px] text-zinc-400 font-semibold mb-1 opacity-0 group-hover:opacity-100 transition">
+                        R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                      </span>
+                      <div className="w-full bg-zinc-800/40 rounded-xl overflow-hidden h-full flex items-end">
+                        <div
+                          className="w-full bg-gradient-to-t from-blue-700 to-blue-500 rounded-xl transition-all duration-700 group-hover:brightness-125"
+                          style={{ height: `${alturaPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-between text-[11px] text-zinc-400 mt-4 px-2 font-medium">
+                <span>01 out</span>
+                <span>08 out</span>
+                <span>15 out</span>
+                <span>22 out</span>
+                <span>31 out</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card Direito: Composição dos Custos */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+          <div>
+            <div className="pb-5 border-b border-zinc-800/60 mb-6">
+              <h3 className="text-sm font-bold text-white">Composição dos custos</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Total de R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} no período
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Item 1: Peças e Componentes (Azul) */}
+              <div>
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-medium text-zinc-300">Peças e componentes</span>
+                  <div className="space-x-2">
+                    <span className="font-bold text-white">
+                      R$ {custoPecas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-zinc-400 font-semibold">{percentPecas}%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${percentPecas}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Item 2: Fretes (Roxo) */}
+              <div>
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-medium text-zinc-300">Fretes</span>
+                  <div className="space-x-2">
+                    <span className="font-bold text-white">
+                      R$ {custoFretes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-zinc-400 font-semibold">{percentFretes}%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-purple-600 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${percentFretes}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Item 3: Garantias e Retornos (Âmbar) */}
+              <div>
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-medium text-zinc-300">Garantias e retornos</span>
+                  <div className="space-x-2">
+                    <span className="font-bold text-white">
+                      R$ {custoGarantias.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-zinc-400 font-semibold">{percentGarantias}%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${percentGarantias}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
